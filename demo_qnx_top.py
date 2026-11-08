@@ -129,7 +129,7 @@ class QnxTopDemo:
     def render_header(self):
         now_str = time.strftime("%H:%M:%S")
         out = []
-        out.append(f"{BG_BLUE}{FG_HI_WHITE}{BOLD}  QNX-TOP v1.0  │  MOCK-UP: SYNTHETIC DATA, NOT A LIVE SYSTEM  │  {now_str}  {RESET}")
+        out.append(f"{BG_BLUE}{FG_HI_WHITE}{BOLD}  QNX-TOP v1.1.0  │  MOCK-UP: SYNTHETIC DATA, NOT A LIVE SYSTEM  │  {now_str}  {RESET}")
         
         # Cores display
         c0 = f"Core 0: {draw_gauge(self.cores[0], 14)} {self.cores[0]:4.1f}% (CtxSw: {self.ctxsw[0]:,}/s)"

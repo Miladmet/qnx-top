@@ -113,7 +113,7 @@ class VideoBuilder:
         y = 125
         # Top banner
         draw.rectangle([(110, y), (1810, y + 36)], fill=(30, 58, 138))
-        draw.text((125, y + 7), "QNX-TOP v1.0", font=self.font_term_bold, fill=TEXT_WHITE)
+        draw.text((125, y + 7), "QNX-TOP v1.1.0", font=self.font_term_bold, fill=TEXT_WHITE)
         draw.text((280, y + 7), "│  Layout mock-up  │  Sample data  │  Not a live capture", font=self.font_term, fill=(191, 219, 254))
         
         y += 50
