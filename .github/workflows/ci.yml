@@ -9,6 +9,12 @@ on:
 jobs:
   build-and-test:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        # Debug and RelWithDebInfo keep debug symbols. RelWithDebInfo also defines
+        # NDEBUG, which proves the tests do not rely on assert().
+        build_type: [Debug, RelWithDebInfo]
 
     steps:
     - name: Checkout Repository
@@ -19,11 +25,34 @@ jobs:
         sudo apt-get update
         sudo apt-get install -y cmake build-essential
 
-    - name: Configure CMake
-      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+    - name: Configure CMake (${{ matrix.build_type }}, warnings are errors)
+      run: cmake -B build -DCMAKE_BUILD_TYPE=${{ matrix.build_type }} -DBUILD_TESTING=ON -DQNX_TOP_WERROR=ON
 
     - name: Build C Library and Executables
-      run: cmake --build build --config Release -j$(nproc)
+      run: cmake --build build -j$(nproc)
 
     - name: Run Unit Tests
       run: ctest --test-dir build --output-on-failure
+
+  thread-sanitizer:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up CMake and Compilers
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure with ThreadSanitizer
+      run: >
+        cmake -B build-tsan -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON -DQNX_TOP_WERROR=ON
+        -DCMAKE_C_FLAGS="-fsanitize=thread -fno-omit-frame-pointer"
+        -DCMAKE_EXE_LINKER_FLAGS="-fsanitize=thread"
+
+    - name: Build
+      run: cmake --build build-tsan -j$(nproc)
+
+    - name: Run Unit Tests under TSan
+      run: ctest --test-dir build-tsan --output-on-failure

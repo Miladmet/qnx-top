@@ -6,70 +6,90 @@
 [![CI Build](https://github.com/Miladmet/qnx-top/actions/workflows/ci.yml/badge.svg)](https://github.com/Miladmet/qnx-top/actions)
 [![Commercial Consulting](https://img.shields.io/badge/Services-QNX%208.0%20Consulting-success.svg)](docs/commercial/CONSULTING.md)
 
-**`qnx-top`** is a high-performance terminal observability tool and microkernel profiler built specifically for **BlackBerry QNX Neutrino 8.0 (QNX Everywhere)**. 
+**`qnx-top`** is a terminal diagnostic tool for **BlackBerry QNX Neutrino 8.0 (QNX Everywhere)**.
 
-While traditional Unix tools (`top`, `htop`) focus solely on monolithic CPU/RAM metrics, `qnx-top` inspects the core foundation of QNX microkernel systems: **synchronous message-passing latency, channel blocking states, Adaptive Partitioning budgets, and `/dev` resource manager trees**.
+Unlike generic `top`-style tools, it looks at QNX microkernel behaviour: which threads are **REPLY-blocked** on which **server channel**, for how long, plus per-process CPU deltas, memory totals, APS presence and the `/dev` namespace.
+
+> **Metric honesty:** every number is either measured or printed as `N/A`. Nothing is estimated or filled in with a default. On a non-QNX host the program runs in a clearly labelled **simulated** mode (see below).
 
 ---
 
-## 📺 Demonstration Video & Highlights
+## What is measured on a QNX 8.0 target
 
-* **Hackathon Demonstration Video:** [Watch on YouTube](https://youtu.be/DEMO_VIDEO_ID) *(2 minutes 47 seconds — generated via `build_demo_video.py`)*
-* **Category:** Developer Tooling & Host Tools
-* **Compatibility:** QNX 8.0 (x86_64, aarch64, QEMU Virtual Target)
+| Area | Source | Status |
+|---|---|---|
+| Process list, parent PID, thread count | `/proc/<pid>/as` + `DCMD_PROC_INFO` | Measured |
+| Process name | `DCMD_PROC_MAPDEBUG_BASE` | Measured |
+| Per-thread priority, policy, scheduler state | `DCMD_PROC_TIDSTATUS` (all threads, up to 32 per process) | Measured |
+| Per-process CPU% | Delta of thread `sutime` between samples, divided by wall time and core count | Measured (shows `N/A` on the first sample of a process) |
+| Address-space size | `fstat()` on `/proc/<pid>/as` | Measured (resident set is not collected) |
+| REPLY-block duration | Time since the sampler **first observed** the thread in `STATE_REPLY` (resets when it leaves that state) | Measured, resolution = refresh interval |
+| Server channel for a blocked client | `blocked.connect.pid` / `blocked.connect.chid` of the REPLY-blocked thread | Measured |
+| Server receive thread / priority | Thread in `STATE_RECEIVE` with matching `blocked.channel.chid` | Measured when such a thread is seen |
+| Core count | `syspage` | Measured |
+| Total / used RAM | `sysconf(_SC_PHYS_PAGES / _SC_AVPHYS_PAGES)` | Measured when the libc provides them, else `N/A` |
+| APS present or not | `SchedCtl(SCHED_APS_QUERY_PARTITION)` probe | Detected only: `Active (per-partition budgets N/A)` or `Inactive / Not Configured` |
+| `/dev` entries | `readdir("/dev")` | Names only |
+
+**Reported as `N/A` (not implemented):** per-core utilization and context-switch rates (need `TraceEvent`), channel message rates, pulse counts, resource-manager / shared-memory pool sizes, APS partition budgets and jitter, `/dev` owner / handler / request-rate details, priority-inversion detection.
+
+> The native QNX code path has **not yet been compiled or run against the QNX SDP 8.0 headers on a real target**. The host build, tests and CI cover only the simulated path and the platform-independent stall tracker. Treat native output as unvalidated until you have run it on your target.
+
+### Sample output on a QNX target (illustrative layout)
 
 ```
 ==========================================================================================
- QNX-TOP v1.0.0 │ QNX NEUTRINO 8.0 [LIVE KERNEL] │ Cores: 4
+ QNX-TOP v1.0.0 | QNX NEUTRINO 8.0 [LIVE KERNEL] | Cores: 4
 ==========================================================================================
-Core 0: [64.2%] (CtxSw:   3920/s)   │   Core 1: [32.1%] (CtxSw:   2140/s)
-Core 2: [51.4%] (CtxSw:   3310/s)   │   Core 3: [14.8%] (CtxSw:   1020/s)
-RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48200 KB │ Total Msg Rate: 97420 msgs/sec
+Per-core CPU% / CtxSw: N/A (requires TraceEvent instrumentation)
+RAM: 812 MB / 4096 MB (19.8%) | ResMgr Pool: N/A KB | Total Msg Rate: N/A msgs/sec
 ------------------------------------------------------------------------------------------
-PID    TID  PRI   STATE             CPU%    CHID   PULSES/S   COMMAND                  
-1      1    255   RUNNING            0.8%  0x01   2410       [kernel/procmgr]         
-124    1    21    RECEIVE            2.4%  0x03   84102      /sbin/devc-ser8250       
-256    1    30    RECEIVE            4.1%  0x04   12940      /sbin/io-pkt-v6-hc       
-312    1    18    REPLY-blocked      1.2%  0x02   312        /sbin/devb-eide (Stall: 12.4ms)
-480    1    40    RUNNING           14.2%  0x08   450119     /usr/bin/safety_actuator 
+PID    TID  PRI   STATE             CPU%     CHID   PULSES     COMMAND
+------------------------------------------------------------------------------------------
+1      1    255   RUNNING           0.8%     0x01   N/A        /proc/boot/procnto-smp-instr
+124    1    21    RECEIVE           2.4%     0x03   N/A        /sbin/devc-ser8250
+312    1    18    REPLY-blocked     1.2%     -      N/A        /sbin/devb-eide (waiting 12.4ms on PID 124 CHID 0x03)
 
-[Channel & Connection Matrix (Synchronous MsgSend/MsgReceive)]
-CHID     OWNER PID    RECEIVE THREAD     BOUND CLIENTS    MSG/SEC    STATUS                
+[Server Channels With REPLY-Blocked Clients]
+CHID     SERVER PID SERVER                 RECEIVE THREAD   BLOCKED CLIENTS MSG/SEC    STATUS
 ------------------------------------------------------------------------------------------
-0x01     1            TID 2  (PRI 250)   16               12400      DETERMINISTIC         
-0x02     312          TID 1  (PRI 18 )   3                140        STALL (12.4ms)        
-0x03     124          TID 1  (PRI 21 )   5                1820       DETERMINISTIC         
-0x04     256          TID 1  (PRI 30 )   22               28950      DETERMINISTIC         
-0x08     480          TID 1  (PRI 40 )   2                50000      DETERMINISTIC         
+0x03     124        /sbin/devc-ser8250     TID 1 (PRI 21)   1              N/A        STALL (12.4ms)
+
+[Adaptive Partitioning System (APS)]
+Adaptive Partitioning: Inactive / Not Configured
+
+[/dev Entries]
+* /dev/ser1                Owner: N/A                Handlers: N/A                       (Req/s: N/A)
 ```
 
----
+The numbers above are an example of the layout, not a recording. Run with `-b` for a single snapshot.
 
-## 🚀 Key Features Built for QNX 8.0
+### Host (simulated) mode
 
-1. **Native Multi-Thread State Matrix:**
-   - Traverses `/proc/<pid>` and iterates all threads (`DCMD_PROC_STATUS`).
-   - Surfaces QNX-specific scheduling states: `RECEIVE-blocked`, `REPLY-blocked`, `SEND-blocked`, `NANOSLEEP`, and `READY`.
-   - Flags threads stalled waiting on remote server processes (`REPLY-blocked`) with delta millisecond latency tracking.
-2. **Channel & Connection Matrix (`chid` / `coid`):**
-   - Live inspection of synchronous `MsgSend()`, `MsgReceive()`, and `MsgReply()` queues.
-   - Detects channel bottlenecks and priority inversion conditions across client-server pipelines.
-3. **Adaptive Partitioning System (APS) Monitor:**
-   - Real-time monitoring of CPU partition budgets (`Safety_Critical`, `Networking_IO`, `System_Kernel`).
-   - Visual verification of hard real-time scheduling boundaries under high CPU stress.
-4. **Native QNX Resource Manager (`/dev/qnx_top`):**
-   - Implements a full QNX resource manager with dedicated background POSIX dispatch thread (`dispatch_block` $\rightarrow$ `dispatch_handler`).
-   - Clean POSIX `_IO_READ` semantics with EOF handling and dynamic heap allocation.
-   - Allows any local process or remote host tool to inspect telemetry via `cat /dev/qnx_top`.
+When built outside QNX the header reads `HOST MODE [SIMULATED TELEMETRY]`. All values then come from a fixed demo data set, so the UI and tests can run anywhere. They say nothing about the machine you are on.
 
 ---
 
-## 🛠️ Build and Run Instructions
+## Resource manager: `/dev/qnx_top`
+
+On QNX the tool registers a resource manager that serves a text summary on `read()`:
+
+- Dispatch loop runs on a dedicated thread (`dispatch_block` then `dispatch_handler`).
+- `read()` returns the report once and then EOF (tracks `ocb->offset`).
+- The snapshot and report buffers are heap allocated.
+- Permissions are `0644`.
+- The same `N/A` rules apply to its output: `cat /dev/qnx_top`.
+
+Collector state is shared between the monitor loop and the resource-manager thread. It is protected by a mutex, and the unit tests exercise concurrent access (CI also runs them under ThreadSanitizer).
+
+---
+
+## Build and Run Instructions
 
 ### Prerequisites
-* QNX Software Development Platform (SDP) 8.0 (Free access via [QNX Everywhere](https://qnx.software/en/developers/get-started/qnx-everywhere)).
-* CMake 3.20+ and QNX Toolchain (`qcc`).
-* *(Optional)* QEMU for x86_64 target emulation.
+* QNX Software Development Platform (SDP) 8.0 (free access via [QNX Everywhere](https://qnx.software/en/developers/get-started/qnx-everywhere)) for the native build.
+* CMake 3.20+ and the QNX toolchain (`qcc`).
+* *(Optional)* QEMU for x86_64 target emulation. A QNX VM image is **not** included in this repository.
 
 ### 1. Building for QNX 8.0 Target
 ```bash
@@ -77,37 +97,36 @@ CHID     OWNER PID    RECEIVE THREAD     BOUND CLIENTS    MSG/SEC    STATUS
 source /opt/qnx800/qnxsdp-env.sh
 
 # 2. Configure with QNX Toolchain
-cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/qnx800-x86_64.toolchain.cmake -DCMAKE_BUILD_TYPE=Release
+cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/qnx800-x86_64.toolchain.cmake -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
 # 3. Compile native binary
 cmake --build build -j$(nproc)
 ```
 
 ### 2. Building and Testing on Host (Linux / macOS)
-`qnx-top` builds cleanly in Host Compatibility Mode for local testing and CI verification:
 ```bash
-# Configure, build, and run unit tests
-cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+cmake -B build -DCMAKE_BUILD_TYPE=Debug -DBUILD_TESTING=ON
 cmake --build build -j$(nproc)
 ctest --test-dir build --output-on-failure
 ```
+Use `-DQNX_TOP_WERROR=ON` to treat warnings as errors (CI does). The tests use their own `TEST_ASSERT` macro, so they also run in Release (`NDEBUG`) builds. The default build type is `RelWithDebInfo`.
 
-### 3. Running in QEMU (1-Command Verification)
+### 3. Running
 ```bash
-# Launch pre-configured QNX 8.0 QEMU virtual machine
-./scripts/run_qemu.sh
-
-# Inside the QNX 8.0 Target Shell:
-qnx-top -d 1.0
+qnx-top            # refresh every 1 s
+qnx-top -d 0.5     # 0.5 s refresh
+qnx-top -b         # one snapshot, no screen clear
+qnx-top -n 10      # exit after 10 refreshes
 ```
 
-### 4. Running the Standalone Interactive Terminal Profiler
-If evaluating on a host machine without an active QNX toolchain:
+### 4. Terminal mock-up (Python)
+`demo_qnx_top.py` is an **animated mock-up with synthetic data**, used for the demo video. It does not read from any system.
 ```bash
 python demo_qnx_top.py
 ```
 
 ---
+
 
 ## 📁 Repository Structure
 
@@ -116,12 +135,12 @@ qnx-top/
 ├── CMakeLists.txt                 # Multi-platform CMake build configuration
 ├── LICENSE                        # MIT Open Source License
 ├── README.md                      # Technical documentation & usage
-├── demo_qnx_top.py                # Standalone interactive Python TUI
+├── demo_qnx_top.py                # Animated mock-up with synthetic data (not a monitor)
 ├── index.html                     # Web landing page
 ├── cmake/                         # QNX 8.0 toolchain files (x86_64 and aarch64)
 ├── include/                       # Public C headers (qnx_top.h)
 ├── src/                           # Native C implementation (collector, resmgr, main)
-├── tests/                         # Unit tests (state mapping & snapshot validation)
+├── tests/                         # Unit tests (states, snapshot, stall tracker, concurrency)
 ├── scripts/                       # Turnkey QEMU launch and build scripts
 └── docs/
     └── commercial/                # Services catalog & consulting documentation

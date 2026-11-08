@@ -232,18 +232,18 @@ RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48.2 MB │ Channel Messages: <sp
         <div class="grid-3">
           <div class="card">
             <div class="card-icon">🔀</div>
-            <h3>Channel & IPC Matrix</h3>
-            <p>Live visibility into synchronous MsgSend, MsgReceive, and MsgReply queues. Instantly identifies priority inversion and deadlocks.</p>
+            <h3>REPLY-Blocked Client Tracking</h3>
+            <p>Shows which threads are REPLY-blocked, on which server process and channel, and for how long. Priority inversion detection is not implemented.</p>
           </div>
           <div class="card">
             <div class="card-icon">🛡️</div>
             <h3>Adaptive Partitioning (APS)</h3>
-            <p>Monitors CPU partition guarantees in real time, validating that safety-critical threads are never starved by runaway processes.</p>
+            <p>Detects whether the APS scheduler is active on the target. Per-partition budgets are not read yet and are shown as N/A.</p>
           </div>
           <div class="card">
             <div class="card-icon">📂</div>
-            <h3>Resource Manager Tree</h3>
-            <p>Catalogs all registered paths under /dev, mapping POSIX pathname resolution directly to owner PIDs and active handler functions.</p>
+            <h3>/dev Listing and Telemetry Endpoint</h3>
+            <p>Lists the entries under /dev (owner and handler details are shown as N/A) and serves a text report at /dev/qnx_top.</p>
           </div>
         </div>
       </div>
