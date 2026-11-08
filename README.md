@@ -8,7 +8,7 @@
 
 **`qnx-top`** is a terminal diagnostic tool for **BlackBerry QNX Neutrino 8.0 (QNX Everywhere)**.
 
-Unlike generic `top`-style tools, it looks at QNX microkernel behaviour: which threads are **REPLY-blocked** on which **server channel**, for how long, plus per-process CPU deltas, memory totals, APS presence and the `/dev` namespace.
+Unlike generic `top`-style tools, it looks at QNX microkernel behaviour: which threads are **REPLY-blocked** on which **server channel**, for how long, plus per-process and per-thread CPU deltas, resident memory, APS presence and the `/dev` namespace.
 
 > **Metric honesty:** every number is either measured or printed as `N/A`. Nothing is estimated or filled in with a default. On a non-QNX host the program runs in a clearly labelled **simulated** mode (see below).
 
@@ -20,10 +20,11 @@ Unlike generic `top`-style tools, it looks at QNX microkernel behaviour: which t
 |---|---|---|
 | Process list, parent PID, thread count | `/proc/<pid>/as` + `DCMD_PROC_INFO` | Measured |
 | Process name | `DCMD_PROC_MAPDEBUG_BASE` | Measured |
-| Per-thread priority, policy, scheduler state | `DCMD_PROC_TIDSTATUS` (all threads, up to 32 per process) | Measured |
-| Per-process CPU% | Delta of thread `sutime` between samples, divided by wall time and core count | Measured (shows `N/A` on the first sample of a process) |
-| Address-space size | `fstat()` on `/proc/<pid>/as` | Measured (resident set is not collected) |
-| REPLY-block duration | Time since the sampler **first observed** the thread in `STATE_REPLY` (resets when it leaves that state) | Measured, resolution = refresh interval |
+| Per-thread priority, policy, scheduler state, last CPU | `DCMD_PROC_TIDSTATUS` (all threads, up to 32 per process; the rest are counted but not listed) | Measured (`last_cpu` only if the SDP header has it) |
+| Per-process and per-thread CPU% | Delta of `sutime` between samples, divided by wall time and core count (share of total machine capacity) | Measured (`N/A` on the first sample) |
+| Address-space size | `fstat()` on `/proc/<pid>/as` | Measured |
+| Resident memory (RSS) | `DCMD_PROC_PAGEDATA`: total size of page runs flagged `PG_HWMAPPED` | Measured; shared pages count in every process that maps them. `N/A` if the page map cannot be read |
+| REPLY-block duration | **Kernel:** `nsec_since_block` when the SDP header has it (detected by CMake), millisecond resolution. **Fallback:** time since qnx-top **first observed** the thread in `STATE_REPLY`, a lower bound | Measured. Every value is labelled `(kernel)` or `(sampled)` |
 | Server channel for a blocked client | `blocked.connect.pid` / `blocked.connect.chid` of the REPLY-blocked thread | Measured |
 | Server receive thread / priority | Thread in `STATE_RECEIVE` with matching `blocked.channel.chid` | Measured when such a thread is seen |
 | Core count | `syspage` | Measured |
@@ -39,21 +40,22 @@ Unlike generic `top`-style tools, it looks at QNX microkernel behaviour: which t
 
 ```
 ==========================================================================================
- QNX-TOP v1.0.0 | QNX NEUTRINO 8.0 [LIVE KERNEL] | Cores: 4
+ QNX-TOP v1.1.0 | QNX NEUTRINO 8.0 [LIVE KERNEL] | Cores: 4
 ==========================================================================================
 Per-core CPU% / CtxSw: N/A (requires TraceEvent instrumentation)
 RAM: 812 MB / 4096 MB (19.8%) | ResMgr Pool: N/A KB | Total Msg Rate: N/A msgs/sec
+REPLY-block time source: kernel (nsec_since_block), sampled lower bound as fallback
 ------------------------------------------------------------------------------------------
-PID    TID  PRI   STATE             CPU%     CHID   PULSES     COMMAND
+PID    TID  PRI   STATE             CPU%     RSS      CHID   PULSES     COMMAND
 ------------------------------------------------------------------------------------------
-1      1    255   RUNNING           0.8%     0x01   N/A        /proc/boot/procnto-smp-instr
-124    1    21    RECEIVE           2.4%     0x03   N/A        /sbin/devc-ser8250
-312    1    18    REPLY-blocked     1.2%     -      N/A        /sbin/devb-eide (waiting 12.4ms on PID 124 CHID 0x03)
+1      1    255   RUNNING           0.8%     1.1M     0x01   N/A        /proc/boot/procnto-smp-instr
+124    1    21    RECEIVE           2.4%     8.0M     0x03   N/A        /sbin/devc-ser8250
+312    1    18    REPLY-blocked     1.2%     6.0M     -      N/A        /sbin/devb-eide [waiting on PID 124 CHID 0x03: 12.0ms (kernel)]
 
 [Server Channels With REPLY-Blocked Clients]
 CHID     SERVER PID SERVER                 RECEIVE THREAD   BLOCKED CLIENTS MSG/SEC    STATUS
 ------------------------------------------------------------------------------------------
-0x03     124        /sbin/devc-ser8250     TID 1 (PRI 21)   1              N/A        STALL (12.4ms)
+0x03     124        /sbin/devc-ser8250     TID 1 (PRI 21)   1              N/A        STALL 12.0ms (kernel)
 
 [Adaptive Partitioning System (APS)]
 Adaptive Partitioning: Inactive / Not Configured
@@ -63,6 +65,22 @@ Adaptive Partitioning: Inactive / Not Configured
 ```
 
 The numbers above are an example of the layout, not a recording. Run with `-b` for a single snapshot.
+
+### Thread view (`-t`, or `-p <pid>` for one process)
+
+```
+PID 312  /sbin/devb-eide  (PPID 1)  VSIZE 12.0M  RSS 6.0M  CPU 1.2%  threads 1
+  TID  PRI  POLICY    STATE          CPU%     CPU# BLOCKED ON
+  1    18   FIFO      REPLY-blocked  1.2%     0    server PID 124 CHID 0x03, waiting 12.0ms (kernel)
+```
+
+Thread CPU% values are shares of total machine capacity, so they add up to the process CPU%.
+
+### How REPLY-block time is measured
+
+- **`(kernel)`:** the kernel's own blocked-time counter (`nsec_since_block`). CMake checks for the field in the SDP headers at configure time and prints which mode was chosen. Force sampling with `-DQNX_TOP_FORCE_SAMPLED_STALL=ON`.
+- **`(sampled)`:** shown as `>=Nms`. It is the time since qnx-top first saw the thread blocked, so it is a lower bound and starts at 0 on the first sighting. It is used when the field is missing or the kernel reports 0 (its resolution is about 1 ms).
+- A channel is flagged `STALL` when its longest-waiting client exceeds 2 ms, whichever source applies.
 
 ### Host (simulated) mode
 
@@ -117,6 +135,8 @@ qnx-top            # refresh every 1 s
 qnx-top -d 0.5     # 0.5 s refresh
 qnx-top -b         # one snapshot, no screen clear
 qnx-top -n 10      # exit after 10 refreshes
+qnx-top -t         # thread view: one row per thread
+qnx-top -p 312     # only PID 312, with its threads
 ```
 
 ### 4. Terminal mock-up (Python)

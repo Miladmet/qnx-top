@@ -6,8 +6,8 @@
  * License: MIT License
  *
  * Metric honesty rule: every metric that cannot be measured on the current
- * platform is flagged unavailable in qnx_metric_availability_t. Consumers must
- * print "N/A" for those metrics and never display the stored value.
+ * platform is flagged unavailable (snapshot->avail, or a per-item *_valid flag).
+ * Consumers must print "N/A" for those metrics and never display the stored value.
  */
 
 #ifndef QNX_TOP_H
@@ -15,9 +15,10 @@
 
 #include <stdint.h>
 #include <stdbool.h>
+#include <stddef.h>
 #include <time.h>
 
-#define QNX_TOP_VERSION "1.0.0"
+#define QNX_TOP_VERSION "1.1.0"
 #define MAX_PROCESSES 256
 #define MAX_THREADS_PER_PROC 32
 #define MAX_CHANNELS 128
@@ -55,6 +56,22 @@ typedef enum {
     QNX_THREAD_UNKNOWN          /* kernel state not mapped by qnx-top */
 } qnx_thread_state_t;
 
+/** Scheduling policy, independent of the host's SCHED_* numbering. */
+typedef enum {
+    QNX_POLICY_OTHER = 0,
+    QNX_POLICY_FIFO,
+    QNX_POLICY_RR,
+    QNX_POLICY_SPORADIC,
+    QNX_POLICY_UNKNOWN
+} qnx_sched_policy_t;
+
+/** Where a REPLY-blocked duration came from. */
+typedef enum {
+    QNX_STALL_NONE = 0,         /* thread is not REPLY-blocked */
+    QNX_STALL_SAMPLED,          /* lower bound: time since qnx-top first saw it blocked */
+    QNX_STALL_KERNEL            /* kernel-reported time blocked (nsec_since_block, ms resolution) */
+} qnx_stall_source_t;
+
 /**
  * Which metrics in a snapshot are real measurements.
  * false => the value is not measured and must be shown as "N/A".
@@ -68,6 +85,8 @@ typedef struct {
     bool msg_rates;         /* channel messages_per_sec, total_channel_msgs_sec */
     bool pulses;            /* process total_pulses_received */
     bool dev_details;       /* /dev node owner, handlers, request rate */
+    bool process_rss;       /* at least one process has rss_valid */
+    bool block_time_kernel; /* build reads the kernel's nsec_since_block field */
 } qnx_metric_availability_t;
 
 /**
@@ -76,12 +95,16 @@ typedef struct {
 typedef struct {
     int tid;
     int priority;
-    int policy;                 /* SCHED_FIFO, SCHED_RR, SCHED_OTHER */
+    qnx_sched_policy_t policy;
     qnx_thread_state_t state;
     uint64_t cpu_time_ns;       /* Cumulative user+system time in ns */
+    float cpu_percent;          /* Share of total machine CPU capacity (valid only if cpu_valid) */
+    bool cpu_valid;             /* false on the first sample of a thread */
+    int last_cpu;               /* CPU the thread last ran on, -1 if not available */
     int blocked_on_pid;         /* Server PID when REPLY-blocked, else 0 */
     int blocked_on_chid;        /* Server channel ID when REPLY-blocked, else 0 */
-    float reply_stall_ms;       /* Time continuously REPLY-blocked, in ms */
+    float reply_stall_ms;       /* Time REPLY-blocked in ms (see stall_source) */
+    qnx_stall_source_t stall_source;
 } qnx_thread_info_t;
 
 /**
@@ -91,10 +114,13 @@ typedef struct {
     int pid;
     int ppid;
     char name[MAX_NAME_LEN];
-    uint64_t memory_vsize_bytes;/* Address space size; resident set is not collected */
+    uint64_t memory_vsize_bytes;/* Address space size */
+    uint64_t rss_bytes;         /* Hardware-mapped (resident) memory; shared pages count in every process */
+    bool rss_valid;             /* false if the page map could not be read */
     float cpu_percent;          /* Delta CPU utilization (valid only if cpu_valid) */
     bool cpu_valid;             /* false on the first sample of a process */
     int num_threads;            /* Number of entries stored in threads[] */
+    int num_threads_total;      /* Threads the kernel reports; may exceed num_threads */
     qnx_thread_info_t threads[MAX_THREADS_PER_PROC];
     int active_chid;            /* Channel this process receives on, 0 if none seen */
     uint64_t total_pulses_received; /* Valid only if availability.pulses */
@@ -115,6 +141,7 @@ typedef struct {
     uint64_t messages_per_sec;  /* Valid only if availability.msg_rates */
     bool is_stalled;
     float max_stall_latency_ms; /* Longest current client stall */
+    qnx_stall_source_t stall_source; /* Source of max_stall_latency_ms */
 } qnx_channel_info_t;
 
 /**
@@ -177,12 +204,27 @@ int qnx_top_init(void);
 /** Thread-safe: may be called concurrently from the main loop and the resmgr thread. */
 int qnx_top_collect_snapshot(qnx_system_snapshot_t *snapshot);
 const char* qnx_thread_state_to_string(qnx_thread_state_t state);
+const char* qnx_policy_to_string(qnx_sched_policy_t policy);
+const char* qnx_stall_source_to_string(qnx_stall_source_t source);
 int qnx_top_start_resmgr(void);
 void qnx_top_stop_resmgr(void);
 void qnx_top_cleanup(void);
 
+/** Formats a byte count as "512B", "1.5K", "24.8M", "1.2G" (binary units). */
+const char *qnx_format_bytes(char *buf, size_t buf_size, uint64_t bytes);
+
 /*
- * Stall tracker (platform independent, thread-safe, unit-tested).
+ * REPLY-block duration.
+ *  - Not REPLY-blocked: 0, QNX_STALL_NONE.
+ *  - Kernel time available and non-zero: that time, QNX_STALL_KERNEL.
+ *  - Otherwise: the sampled value (time since qnx-top first saw the thread
+ *    blocked, a lower bound), QNX_STALL_SAMPLED.
+ */
+float qnx_stall_resolve(bool in_reply_state, bool kernel_available, uint64_t kernel_nsec,
+                        float sampled_ms, qnx_stall_source_t *source_out);
+
+/*
+ * Sampled stall tracker (platform independent, thread-safe, unit-tested).
  * A thread is first seen REPLY-blocked at time T: the start is recorded as T.
  * While it stays REPLY-blocked the stall is (now - T). Leaving the state resets it.
  */
