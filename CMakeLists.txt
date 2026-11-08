@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.20)
-project(qnx-top VERSION 1.0.0 LANGUAGES C)
+project(qnx-top VERSION 1.1.0 LANGUAGES C)
 
 include(GNUInstallDirs)
 include(CTest)
@@ -15,6 +15,8 @@ if(NOT _is_multi_config AND NOT CMAKE_BUILD_TYPE)
 endif()
 
 option(QNX_TOP_WERROR "Treat compiler warnings as errors" OFF)
+option(QNX_TOP_FORCE_SAMPLED_STALL
+       "Do not use the kernel's nsec_since_block field; measure REPLY stalls by sampling only" OFF)
 
 # Compiler Warnings
 if(MSVC)
@@ -34,7 +36,9 @@ include_directories(include)
 # Detect QNX target builds. The QNX toolchain files set CMAKE_SYSTEM_NAME to QNX
 # and qcc predefines __QNX__, so no manual define is needed. Merely having
 # QNX_TARGET in the environment must not switch a host build into QNX mode.
+set(_qnx_target FALSE)
 if(CMAKE_SYSTEM_NAME STREQUAL "QNX")
+    set(_qnx_target TRUE)
     message(STATUS "[qnx-top] Configuring build for BlackBerry QNX Neutrino 8.0 Target")
 else()
     message(STATUS "[qnx-top] Configuring build in Host Compatibility Mode (${CMAKE_SYSTEM_NAME})")
@@ -47,8 +51,31 @@ add_library(qnx_top_core STATIC
 )
 target_include_directories(qnx_top_core PUBLIC include)
 
+# QNX procfs_status members that differ between SDP versions are detected with
+# a compile check against the real headers, so an SDP lacking them still builds.
+# Override a result with -DQNX_TOP_HAVE_NSEC_SINCE_BLOCK=OFF (or LAST_CPU) if needed.
+if(_qnx_target)
+    include(CheckStructHasMember)
+    if(NOT QNX_TOP_FORCE_SAMPLED_STALL)
+        check_struct_has_member(procfs_status nsec_since_block sys/procfs.h
+                                QNX_TOP_HAVE_NSEC_SINCE_BLOCK LANGUAGE C)
+    endif()
+    check_struct_has_member(procfs_status last_cpu sys/procfs.h
+                            QNX_TOP_HAVE_LAST_CPU LANGUAGE C)
+
+    if(QNX_TOP_HAVE_NSEC_SINCE_BLOCK AND NOT QNX_TOP_FORCE_SAMPLED_STALL)
+        target_compile_definitions(qnx_top_core PRIVATE QNX_TOP_HAVE_NSEC_SINCE_BLOCK=1)
+        message(STATUS "[qnx-top] REPLY stall time: kernel nsec_since_block (sampling as fallback)")
+    else()
+        message(STATUS "[qnx-top] REPLY stall time: sampled lower bound only")
+    endif()
+    if(QNX_TOP_HAVE_LAST_CPU)
+        target_compile_definitions(qnx_top_core PRIVATE QNX_TOP_HAVE_LAST_CPU=1)
+    endif()
+endif()
+
 # pthreads: part of libc on QNX; a separate library on other UNIX hosts.
-if(UNIX AND NOT APPLE AND NOT CMAKE_SYSTEM_NAME STREQUAL "QNX")
+if(UNIX AND NOT APPLE AND NOT _qnx_target)
     set(THREADS_PREFER_PTHREAD_FLAG ON)
     find_package(Threads REQUIRED)
     target_link_libraries(qnx_top_core PUBLIC Threads::Threads)

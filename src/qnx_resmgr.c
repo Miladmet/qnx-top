@@ -90,13 +90,16 @@ static void format_report(const qnx_system_snapshot_t *s, char *buf, size_t capa
         const qnx_process_info_t *p = &s->processes[i];
         qnx_thread_state_t st = p->num_threads > 0 ? p->threads[0].state : QNX_THREAD_UNKNOWN;
         int pri = p->num_threads > 0 ? p->threads[0].priority : 0;
-        if (p->cpu_valid) {
-            report_append(buf, capacity, len, "  PID %-6d PRI %-3d State: %-15s CPU: %4.1f%%  %s\n",
-                          p->pid, pri, qnx_thread_state_to_string(st), p->cpu_percent, p->name);
-        } else {
-            report_append(buf, capacity, len, "  PID %-6d PRI %-3d State: %-15s CPU: N/A    %s\n",
-                          p->pid, pri, qnx_thread_state_to_string(st), p->name);
-        }
+
+        char cpu[16];
+        char rss[16];
+        if (p->cpu_valid) snprintf(cpu, sizeof(cpu), "%.1f%%", p->cpu_percent);
+        else snprintf(cpu, sizeof(cpu), "N/A");
+        if (p->rss_valid) qnx_format_bytes(rss, sizeof(rss), p->rss_bytes);
+        else snprintf(rss, sizeof(rss), "N/A");
+
+        report_append(buf, capacity, len, "  PID %-6d PRI %-3d State: %-15s CPU: %-6s RSS: %-8s %s\n",
+                      p->pid, pri, qnx_thread_state_to_string(st), cpu, rss, p->name);
     }
 }
 

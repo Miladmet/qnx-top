@@ -26,6 +26,12 @@
 
 #define MS_NS 1000000ULL
 
+static bool near_f(float a, float b, float eps) {
+    float d = a - b;
+    if (d < 0.0f) d = -d;
+    return d <= eps;
+}
+
 static void test_state_strings(void) {
     printf("[TEST] Testing QNX thread state conversions...\n");
     TEST_ASSERT(strcmp(qnx_thread_state_to_string(QNX_THREAD_RUNNING), "RUNNING") == 0, "RUNNING");
@@ -44,6 +50,64 @@ static void test_state_strings(void) {
     TEST_ASSERT(strcmp(qnx_thread_state_to_string(QNX_THREAD_WAITPAGE), "WAITPAGE") == 0, "WAITPAGE");
     TEST_ASSERT(strcmp(qnx_thread_state_to_string(QNX_THREAD_UNKNOWN), "UNKNOWN") == 0, "UNKNOWN enum");
     TEST_ASSERT(strcmp(qnx_thread_state_to_string((qnx_thread_state_t)999), "UNKNOWN") == 0, "out of range");
+    printf("  -> PASS\n");
+}
+
+static void test_policy_and_source_strings(void) {
+    printf("[TEST] Testing policy and stall source names...\n");
+    TEST_ASSERT(strcmp(qnx_policy_to_string(QNX_POLICY_FIFO), "FIFO") == 0, "FIFO");
+    TEST_ASSERT(strcmp(qnx_policy_to_string(QNX_POLICY_RR), "RR") == 0, "RR");
+    TEST_ASSERT(strcmp(qnx_policy_to_string(QNX_POLICY_OTHER), "OTHER") == 0, "OTHER");
+    TEST_ASSERT(strcmp(qnx_policy_to_string(QNX_POLICY_SPORADIC), "SPORADIC") == 0, "SPORADIC");
+    TEST_ASSERT(strcmp(qnx_policy_to_string((qnx_sched_policy_t)99), "?") == 0, "unknown policy");
+    TEST_ASSERT(strcmp(qnx_stall_source_to_string(QNX_STALL_KERNEL), "kernel") == 0, "kernel");
+    TEST_ASSERT(strcmp(qnx_stall_source_to_string(QNX_STALL_SAMPLED), "sampled") == 0, "sampled");
+    TEST_ASSERT(strcmp(qnx_stall_source_to_string(QNX_STALL_NONE), "") == 0, "none");
+    printf("  -> PASS\n");
+}
+
+static void test_format_bytes(void) {
+    printf("[TEST] Testing byte formatting...\n");
+    char buf[32];
+    TEST_ASSERT(strcmp(qnx_format_bytes(buf, sizeof(buf), 0), "0B") == 0, "zero");
+    TEST_ASSERT(strcmp(qnx_format_bytes(buf, sizeof(buf), 512), "512B") == 0, "bytes");
+    TEST_ASSERT(strcmp(qnx_format_bytes(buf, sizeof(buf), 1536), "1.5K") == 0, "kib");
+    TEST_ASSERT(strcmp(qnx_format_bytes(buf, sizeof(buf), 8ULL * 1024 * 1024), "8.0M") == 0, "mib");
+    TEST_ASSERT(strcmp(qnx_format_bytes(buf, sizeof(buf), 3ULL * 1024 * 1024 * 1024), "3.0G") == 0, "gib");
+    char tiny[4];
+    qnx_format_bytes(tiny, sizeof(tiny), 123456789ULL);
+    TEST_ASSERT(strlen(tiny) < sizeof(tiny), "output is truncated, not overflowed");
+    printf("  -> PASS\n");
+}
+
+static void test_stall_resolve(void) {
+    printf("[TEST] Testing kernel vs sampled stall resolution...\n");
+    qnx_stall_source_t src = QNX_STALL_KERNEL;
+    float ms;
+
+    /* Not REPLY-blocked: no stall, whatever the inputs say. */
+    ms = qnx_stall_resolve(false, true, 50 * MS_NS, 9.0f, &src);
+    TEST_ASSERT(ms == 0.0f && src == QNX_STALL_NONE, "not in reply => none");
+
+    /* Kernel value wins over the sampled lower bound. */
+    ms = qnx_stall_resolve(true, true, 15 * MS_NS, 4.0f, &src);
+    TEST_ASSERT(near_f(ms, 15.0f, 0.001f) && src == QNX_STALL_KERNEL, "kernel value preferred");
+
+    /* Kernel reports 0 (sub-millisecond resolution): fall back to sampling. */
+    ms = qnx_stall_resolve(true, true, 0, 4.0f, &src);
+    TEST_ASSERT(near_f(ms, 4.0f, 0.001f) && src == QNX_STALL_SAMPLED, "zero kernel time falls back");
+
+    /* Field not available in this build: sampling only. */
+    ms = qnx_stall_resolve(true, false, 99 * MS_NS, 7.5f, &src);
+    TEST_ASSERT(near_f(ms, 7.5f, 0.001f) && src == QNX_STALL_SAMPLED, "no kernel field => sampled");
+
+    /* First sighting: sampled is 0 but the source is still sampled. */
+    ms = qnx_stall_resolve(true, false, 0, 0.0f, &src);
+    TEST_ASSERT(ms == 0.0f && src == QNX_STALL_SAMPLED, "first sighting is a sampled zero");
+
+    /* NULL source pointer is allowed. */
+    ms = qnx_stall_resolve(true, true, 3 * MS_NS, 0.0f, NULL);
+    TEST_ASSERT(near_f(ms, 3.0f, 0.001f), "NULL source accepted");
     printf("  -> PASS\n");
 }
 
@@ -67,11 +131,47 @@ static void test_snapshot_collection(void) {
         TEST_ASSERT(snapshot->avail.ram_total && snapshot->ram_total_mb > 0, "simulated RAM total");
     }
 
+    bool any_rss = false;
     for (int i = 0; i < snapshot->num_processes; i++) {
         const qnx_process_info_t *p = &snapshot->processes[i];
         TEST_ASSERT(strlen(p->name) > 0, "process name not empty");
         TEST_ASSERT(p->num_threads > 0 && p->num_threads <= MAX_THREADS_PER_PROC, "thread count");
+        TEST_ASSERT(p->num_threads_total >= p->num_threads, "total thread count covers stored threads");
+
+        /* Resident memory: only meaningful when flagged valid, and never above the address space. */
+        if (p->rss_valid) {
+            any_rss = true;
+            TEST_ASSERT(p->rss_bytes <= p->memory_vsize_bytes, "rss does not exceed vsize");
+        } else {
+            TEST_ASSERT(p->rss_bytes == 0, "invalid rss is not populated");
+        }
+
+        /* Per-thread view invariants. */
+        float thread_cpu_sum = 0.0f;
+        bool all_thread_cpu_valid = true;
+        for (int t = 0; t < p->num_threads; t++) {
+            const qnx_thread_info_t *th = &p->threads[t];
+            TEST_ASSERT(th->tid > 0, "thread id");
+            TEST_ASSERT(th->policy <= QNX_POLICY_UNKNOWN, "policy in range");
+            TEST_ASSERT(th->last_cpu >= -1 && th->last_cpu < (int)MAX_CORES, "last_cpu in range");
+            if (th->cpu_valid) thread_cpu_sum += th->cpu_percent;
+            else all_thread_cpu_valid = false;
+
+            if (th->state == QNX_THREAD_REPLY_BLOCKED) {
+                TEST_ASSERT(th->stall_source != QNX_STALL_NONE, "blocked thread has a stall source");
+                TEST_ASSERT(th->reply_stall_ms >= 0.0f, "stall is non-negative");
+            } else {
+                TEST_ASSERT(th->stall_source == QNX_STALL_NONE, "non-blocked thread has no stall source");
+                TEST_ASSERT(th->reply_stall_ms == 0.0f, "non-blocked thread has no stall");
+                TEST_ASSERT(th->blocked_on_pid == 0 && th->blocked_on_chid == 0, "no server when not blocked");
+            }
+        }
+        /* Thread CPU shares add up to the process share (both are fractions of total capacity). */
+        if (p->cpu_valid && all_thread_cpu_valid) {
+            TEST_ASSERT(near_f(thread_cpu_sum, p->cpu_percent, 0.1f), "thread CPU sums to process CPU");
+        }
     }
+    TEST_ASSERT(snapshot->avail.process_rss == any_rss, "process_rss flag matches per-process flags");
 
     /* Channels are owned by the SERVER and carry the clients waiting on them. */
     for (int i = 0; i < snapshot->num_channels; i++) {
@@ -81,6 +181,9 @@ static void test_snapshot_collection(void) {
         TEST_ASSERT(c->blocked_clients >= 0, "blocked clients non-negative");
         TEST_ASSERT(c->is_stalled == (c->max_stall_latency_ms > QNX_TOP_STALL_THRESHOLD_MS),
                     "stall flag matches threshold");
+        if (c->blocked_clients > 0) {
+            TEST_ASSERT(c->stall_source != QNX_STALL_NONE, "channel with clients has a stall source");
+        }
     }
 
     /* Every REPLY-blocked thread must point at a channel in the matrix, owned by its server. */
@@ -207,6 +310,9 @@ int main(void) {
     printf("===================================================================\n");
 
     test_state_strings();
+    test_policy_and_source_strings();
+    test_format_bytes();
+    test_stall_resolve();
     test_snapshot_collection();
     test_stall_tracker();
 #ifdef HAVE_PTHREADS

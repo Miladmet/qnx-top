@@ -3,10 +3,16 @@
  * @brief Telemetry collector using native QNX 8.0 Neutrino procfs APIs
  *
  * Native mode reports only what the kernel interfaces below actually provide:
- *  - /proc/<pid>/as  DCMD_PROC_INFO, DCMD_PROC_MAPDEBUG_BASE, DCMD_PROC_TIDSTATUS
+ *  - /proc/<pid>/as  DCMD_PROC_INFO, DCMD_PROC_MAPDEBUG_BASE, DCMD_PROC_TIDSTATUS,
+ *                    DCMD_PROC_PAGEDATA (resident memory)
  *  - sysconf() physical memory page counts (when supported)
  *  - SchedCtl() APS probe
- * Everything else is flagged unavailable in snapshot->avail and shown as "N/A".
+ * Everything else is flagged unavailable and shown as "N/A".
+ *
+ * REPLY-block time: if the build detects the kernel's nsec_since_block field
+ * (QNX_TOP_HAVE_NSEC_SINCE_BLOCK, set by CMake) that value is used. Otherwise,
+ * or if the kernel reports 0, the sampled lower bound from the history table is
+ * used. The source is recorded next to every value.
  *
  * Thread safety: all history state (g_history, g_history_count) is guarded by
  * g_history_mutex. qnx_top_collect_snapshot() holds the lock for the whole
@@ -32,11 +38,11 @@
 #endif
 
 #ifdef __QNX__
-    #include <stddef.h>
     #include <limits.h>
     #include <errno.h>
     #include <devctl.h>
     #include <sched.h>
+    #include <sys/mman.h>
     #include <sys/neutrino.h>
     #include <sys/procfs.h>
     #include <sys/states.h>
@@ -64,7 +70,7 @@ typedef struct {
 } proc_cpu_history_t;
 
 typedef struct {
-    float stall_ms;
+    float stall_ms;                 /* sampled lower bound */
     bool had_prev;                  /* a previous sample existed for this thread */
     uint64_t delta_sutime_ns;
     uint64_t delta_wall_ns;
@@ -250,6 +256,58 @@ const char* qnx_thread_state_to_string(qnx_thread_state_t state) {
     }
 }
 
+const char* qnx_policy_to_string(qnx_sched_policy_t policy) {
+    switch (policy) {
+        case QNX_POLICY_OTHER:    return "OTHER";
+        case QNX_POLICY_FIFO:     return "FIFO";
+        case QNX_POLICY_RR:       return "RR";
+        case QNX_POLICY_SPORADIC: return "SPORADIC";
+        default:                  return "?";
+    }
+}
+
+const char* qnx_stall_source_to_string(qnx_stall_source_t source) {
+    switch (source) {
+        case QNX_STALL_KERNEL:  return "kernel";
+        case QNX_STALL_SAMPLED: return "sampled";
+        default:                return "";
+    }
+}
+
+const char *qnx_format_bytes(char *buf, size_t buf_size, uint64_t bytes) {
+    static const char units[] = {'B', 'K', 'M', 'G', 'T'};
+    double value = (double)bytes;
+    size_t u = 0;
+    while (value >= 1024.0 && u + 1 < sizeof(units)) {
+        value /= 1024.0;
+        u++;
+    }
+    if (u == 0) {
+        snprintf(buf, buf_size, "%lu%c", (unsigned long)bytes, units[u]);
+    } else {
+        snprintf(buf, buf_size, "%.1f%c", value, units[u]);
+    }
+    return buf;
+}
+
+float qnx_stall_resolve(bool in_reply_state, bool kernel_available, uint64_t kernel_nsec,
+                        float sampled_ms, qnx_stall_source_t *source_out) {
+    qnx_stall_source_t src = QNX_STALL_NONE;
+    float ms = 0.0f;
+
+    if (in_reply_state) {
+        if (kernel_available && kernel_nsec > 0) {
+            ms = (float)((double)kernel_nsec / 1000000.0);
+            src = QNX_STALL_KERNEL;
+        } else {
+            ms = sampled_ms;
+            src = QNX_STALL_SAMPLED;
+        }
+    }
+    if (source_out) *source_out = src;
+    return ms;
+}
+
 int qnx_top_init(void) {
     int cs;
     history_lock(&cs);
@@ -278,12 +336,14 @@ int qnx_top_init(void) {
 
 #define MAX_WAITS     512
 #define MAX_RECEIVERS 1024
+#define PAGEDATA_MAX_ENTRIES 16384
 
 /* A client thread REPLY-blocked on a server channel. */
 typedef struct {
     int server_pid;
     int server_chid;
     float stall_ms;
+    qnx_stall_source_t source;
 } reply_wait_t;
 
 /* A server thread RECEIVE-blocked on one of its channels. */
@@ -293,6 +353,12 @@ typedef struct {
     int priority;
     int chid;
 } receiver_t;
+
+/* Reusable buffer for DCMD_PROC_PAGEDATA, shared across processes in one pass. */
+typedef struct {
+    procfs_mapinfo *buf;
+    size_t capacity;            /* in entries */
+} pagedata_scratch_t;
 
 static qnx_thread_state_t map_qnx_state(unsigned state) {
     switch (state) {
@@ -354,6 +420,24 @@ static qnx_thread_state_t map_qnx_state(unsigned state) {
     }
 }
 
+static qnx_sched_policy_t map_qnx_policy(unsigned policy) {
+    switch (policy) {
+#ifdef SCHED_FIFO
+        case SCHED_FIFO:        return QNX_POLICY_FIFO;
+#endif
+#ifdef SCHED_RR
+        case SCHED_RR:          return QNX_POLICY_RR;
+#endif
+#ifdef SCHED_OTHER
+        case SCHED_OTHER:       return QNX_POLICY_OTHER;
+#endif
+#ifdef SCHED_SPORADIC
+        case SCHED_SPORADIC:    return QNX_POLICY_SPORADIC;
+#endif
+        default:                return QNX_POLICY_UNKNOWN;
+    }
+}
+
 /* Executable path of the process, via DCMD_PROC_MAPDEBUG_BASE. */
 static void read_process_name(int fd, int pid, char *out, size_t out_size) {
     union {
@@ -370,6 +454,62 @@ static void read_process_name(int fd, int pid, char *out, size_t out_size) {
         }
     }
     snprintf(out, out_size, "[pid %d]", pid);
+}
+
+/*
+ * Resident memory of a process: the total size of page runs that the page map
+ * (DCMD_PROC_PAGEDATA) reports as hardware-mapped (PG_HWMAPPED). Shared pages
+ * count in every process that maps them, so the sum over processes exceeds
+ * physical RAM use. Returns false (and leaves *rss_bytes untouched) if the map
+ * cannot be read.
+ *
+ * Protocol (same as pidin): devctl(NULL, 0, &num) returns the entry count; the
+ * map can grow between calls, so retry with a larger buffer if it did.
+ */
+static bool read_process_rss(int fd, pagedata_scratch_t *sc, uint64_t *rss_bytes) {
+#ifdef PG_HWMAPPED
+    int num = 0;
+    if (devctl(fd, DCMD_PROC_PAGEDATA, NULL, 0, &num) != EOK || num < 0) {
+        return false;
+    }
+
+    for (int attempt = 0; attempt < 4; attempt++) {
+        size_t want = (size_t)num + 16;                 /* slack for growth between calls */
+        if (want > PAGEDATA_MAX_ENTRIES) {
+            return false;
+        }
+        if (want > sc->capacity) {
+            procfs_mapinfo *grown = realloc(sc->buf, want * sizeof(*grown));
+            if (!grown) {
+                return false;
+            }
+            sc->buf = grown;
+            sc->capacity = want;
+        }
+
+        int got = 0;
+        if (devctl(fd, DCMD_PROC_PAGEDATA, sc->buf, want * sizeof(*sc->buf), &got) != EOK || got < 0) {
+            return false;
+        }
+        if ((size_t)got <= want) {
+            uint64_t total = 0;
+            for (int i = 0; i < got; i++) {
+                if (sc->buf[i].flags & PG_HWMAPPED) {
+                    total += (uint64_t)sc->buf[i].size;
+                }
+            }
+            *rss_bytes = total;
+            return true;
+        }
+        num = got;                                      /* map grew: retry with the new size */
+    }
+    return false;
+#else
+    (void)fd;
+    (void)sc;
+    (void)rss_bytes;
+    return false;
+#endif
 }
 
 static void collect_memory(qnx_system_snapshot_t *snapshot) {
@@ -461,8 +601,9 @@ static void build_channel_matrix(qnx_system_snapshot_t *snapshot,
 
         qnx_channel_info_t *c = &snapshot->channels[idx];
         c->blocked_clients++;
-        if (waits[w].stall_ms > c->max_stall_latency_ms) {
+        if (waits[w].stall_ms >= c->max_stall_latency_ms) {
             c->max_stall_latency_ms = waits[w].stall_ms;
+            c->stall_source = waits[w].source;
         }
         c->is_stalled = (c->max_stall_latency_ms > QNX_TOP_STALL_THRESHOLD_MS);
     }
@@ -490,6 +631,11 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
     snapshot->avail.msg_rates = false;
     snapshot->avail.pulses = false;
     snapshot->avail.dev_details = false;
+#ifdef QNX_TOP_HAVE_NSEC_SINCE_BLOCK
+    snapshot->avail.block_time_kernel = true;
+#else
+    snapshot->avail.block_time_kernel = false;
+#endif
 
     snapshot->num_cores = _syspage_ptr->num_cpu;
     if (snapshot->num_cores > MAX_CORES) snapshot->num_cores = MAX_CORES;
@@ -499,6 +645,7 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
 
     reply_wait_t *waits = calloc(MAX_WAITS, sizeof(*waits));
     receiver_t *receivers = calloc(MAX_RECEIVERS, sizeof(*receivers));
+    pagedata_scratch_t scratch = { NULL, 0 };
     if (!waits || !receivers) {
         free(waits);
         free(receivers);
@@ -534,11 +681,19 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
             memset(p, 0, sizeof(*p));
             p->pid = pid;
             p->ppid = (int)info.parent;
+            p->num_threads_total = (int)info.num_threads;
             read_process_name(fd, pid, p->name, sizeof(p->name));
 
             struct stat st;
             if (fstat(fd, &st) == 0 && st.st_size > 0) {
                 p->memory_vsize_bytes = (uint64_t)st.st_size;
+            }
+
+            uint64_t rss = 0;
+            if (read_process_rss(fd, &scratch, &rss)) {
+                p->rss_bytes = rss;
+                p->rss_valid = true;
+                snapshot->avail.process_rss = true;
             }
 
             uint64_t sum_delta_sutime = 0;
@@ -558,7 +713,8 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
                 if (tid < next_tid) break;
                 next_tid = tid + 1;
 
-                bool in_reply = (map_qnx_state(status.state) == QNX_THREAD_REPLY_BLOCKED);
+                qnx_thread_state_t state = map_qnx_state(status.state);
+                bool in_reply = (state == QNX_THREAD_REPLY_BLOCKED);
 
                 history_obs_t obs;
                 history_observe_locked(pid, tid, (uint64_t)status.sutime, in_reply, now_ns, &obs);
@@ -571,10 +727,29 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
                 qnx_thread_info_t *t = &p->threads[t_idx++];
                 t->tid = tid;
                 t->priority = (int)status.priority;
-                t->policy = (int)status.policy;
-                t->state = map_qnx_state(status.state);
+                t->policy = map_qnx_policy(status.policy);
+                t->state = state;
                 t->cpu_time_ns = (uint64_t)status.sutime;
-                t->reply_stall_ms = obs.stall_ms;
+                t->last_cpu = -1;
+#ifdef QNX_TOP_HAVE_LAST_CPU
+                t->last_cpu = (int)status.last_cpu;
+#endif
+                if (obs.had_prev && obs.delta_wall_ns > 0) {
+                    float tcpu = ((float)obs.delta_sutime_ns / (float)obs.delta_wall_ns) * 100.0f /
+                                 (float)snapshot->num_cores;
+                    if (tcpu > 100.0f) tcpu = 100.0f;
+                    t->cpu_percent = tcpu;
+                    t->cpu_valid = true;
+                }
+
+                bool kernel_time = false;
+                uint64_t kernel_nsec = 0;
+#ifdef QNX_TOP_HAVE_NSEC_SINCE_BLOCK
+                kernel_time = true;
+                kernel_nsec = (uint64_t)status.nsec_since_block;
+#endif
+                t->reply_stall_ms = qnx_stall_resolve(in_reply, kernel_time, kernel_nsec,
+                                                      obs.stall_ms, &t->stall_source);
 
                 if (in_reply) {
                     /* For STATE_REPLY, blocked.connect names the SERVER's pid and channel. */
@@ -583,10 +758,11 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
                     if (num_waits < MAX_WAITS) {
                         waits[num_waits].server_pid = t->blocked_on_pid;
                         waits[num_waits].server_chid = t->blocked_on_chid;
-                        waits[num_waits].stall_ms = obs.stall_ms;
+                        waits[num_waits].stall_ms = t->reply_stall_ms;
+                        waits[num_waits].source = t->stall_source;
                         num_waits++;
                     }
-                } else if (t->state == QNX_THREAD_RECEIVE_BLOCKED && num_receivers < MAX_RECEIVERS) {
+                } else if (state == QNX_THREAD_RECEIVE_BLOCKED && num_receivers < MAX_RECEIVERS) {
                     receivers[num_receivers].pid = pid;
                     receivers[num_receivers].tid = tid;
                     receivers[num_receivers].priority = t->priority;
@@ -609,6 +785,7 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
         close(fd);
     }
     closedir(dir);
+    free(scratch.buf);
     snapshot->num_processes = proc_count;
 
     history_sweep_locked();
@@ -649,27 +826,34 @@ static int collect_native_qnx_snapshot_locked(qnx_system_snapshot_t *snapshot) {
 /* Host simulator (clearly labelled SIMULATED by is_native_qnx == false)      */
 /* ------------------------------------------------------------------------- */
 
-static void sim_thread(qnx_process_info_t *p, int tid, int prio, int policy,
-                       qnx_thread_state_t state, int blocked_pid, int blocked_chid,
-                       float stall_ms) {
+static void sim_thread(qnx_process_info_t *p, int tid, int prio, qnx_sched_policy_t policy,
+                       qnx_thread_state_t state, float cpu, int last_cpu,
+                       int blocked_pid, int blocked_chid, float stall_ms) {
     qnx_thread_info_t *t = &p->threads[p->num_threads++];
+    p->num_threads_total = p->num_threads;
     t->tid = tid;
     t->priority = prio;
     t->policy = policy;
     t->state = state;
+    t->cpu_percent = cpu;
+    t->cpu_valid = true;
+    t->last_cpu = last_cpu;
     t->blocked_on_pid = blocked_pid;
     t->blocked_on_chid = blocked_chid;
     t->reply_stall_ms = stall_ms;
+    t->stall_source = (state == QNX_THREAD_REPLY_BLOCKED) ? QNX_STALL_KERNEL : QNX_STALL_NONE;
 }
 
 static qnx_process_info_t *sim_process(qnx_system_snapshot_t *s, int pid, int ppid,
-                                       const char *name, uint64_t vsize, float cpu,
-                                       int active_chid, uint64_t pulses) {
+                                       const char *name, uint64_t vsize, uint64_t rss,
+                                       float cpu, int active_chid, uint64_t pulses) {
     qnx_process_info_t *p = &s->processes[s->num_processes++];
     p->pid = pid;
     p->ppid = ppid;
     copy_str(p->name, sizeof(p->name), name);
     p->memory_vsize_bytes = vsize;
+    p->rss_bytes = rss;
+    p->rss_valid = true;
     p->cpu_percent = cpu;
     p->cpu_valid = true;
     p->active_chid = active_chid;
@@ -690,6 +874,7 @@ static void sim_channel(qnx_system_snapshot_t *s, int chid, int owner_pid, const
     c->messages_per_sec = msgs;
     c->is_stalled = stalled;
     c->max_stall_latency_ms = stall_ms;
+    c->stall_source = clients > 0 ? QNX_STALL_KERNEL : QNX_STALL_NONE;
 }
 
 static void sim_partition(qnx_system_snapshot_t *s, const char *name, float budget,
@@ -729,6 +914,8 @@ static int collect_simulated_snapshot(qnx_system_snapshot_t *snapshot) {
     snapshot->avail.msg_rates = true;
     snapshot->avail.pulses = true;
     snapshot->avail.dev_details = true;
+    snapshot->avail.process_rss = true;
+    snapshot->avail.block_time_kernel = true;
 
     snapshot->num_cores = 4;
     snapshot->ram_total_mb = 4096;
@@ -746,21 +933,22 @@ static int collect_simulated_snapshot(qnx_system_snapshot_t *snapshot) {
     snapshot->core_ctxsw_per_sec[2] = 3310;
     snapshot->core_ctxsw_per_sec[3] = 1020;
 
+    const uint64_t MiB = 1024ULL * 1024ULL;
     qnx_process_info_t *p;
-    p = sim_process(snapshot, 1, 0, "[kernel/procmgr]", 2400000, 0.8f, 0x01, 2410);
-    sim_thread(p, 1, 255, 0, QNX_THREAD_RUNNING, 0, 0, 0.0f);
-    sim_thread(p, 2, 250, 0, QNX_THREAD_RECEIVE_BLOCKED, 0, 0, 0.0f);
-    p = sim_process(snapshot, 124, 1, "/sbin/devc-ser8250", 16000000, 2.4f, 0x03, 84102);
-    sim_thread(p, 1, 21, 0, QNX_THREAD_RECEIVE_BLOCKED, 0, 0, 0.0f);
-    p = sim_process(snapshot, 256, 1, "/sbin/io-pkt-v6-hc", 32000000, 4.1f, 0x04, 12940);
-    sim_thread(p, 1, 30, 0, QNX_THREAD_RECEIVE_BLOCKED, 0, 0, 0.0f);
-    sim_thread(p, 2, 28, 0, QNX_THREAD_READY, 0, 0, 0.0f);
-    p = sim_process(snapshot, 312, 1, "/sbin/devb-eide", 12000000, 1.2f, 0, 312);
-    sim_thread(p, 1, 18, 0, QNX_THREAD_REPLY_BLOCKED, 124, 0x03, 12.4f);
-    p = sim_process(snapshot, 480, 1, "/usr/bin/safety_actuator", 48000000, 14.2f, 0x08, 450119);
-    sim_thread(p, 1, 40, 1, QNX_THREAD_RUNNING, 0, 0, 0.0f);
-    p = sim_process(snapshot, 512, 1, "/usr/bin/can_gateway", 24000000, 1.9f, 0x05, 4200);
-    sim_thread(p, 1, 22, 0, QNX_THREAD_RECEIVE_BLOCKED, 0, 0, 0.0f);
+    p = sim_process(snapshot, 1, 0, "[kernel/procmgr]", 2400000, 1200000, 0.8f, 0x01, 2410);
+    sim_thread(p, 1, 255, QNX_POLICY_RR, QNX_THREAD_RUNNING, 0.6f, 0, 0, 0, 0.0f);
+    sim_thread(p, 2, 250, QNX_POLICY_RR, QNX_THREAD_RECEIVE_BLOCKED, 0.2f, 1, 0, 0, 0.0f);
+    p = sim_process(snapshot, 124, 1, "/sbin/devc-ser8250", 16 * MiB, 8 * MiB, 2.4f, 0x03, 84102);
+    sim_thread(p, 1, 21, QNX_POLICY_FIFO, QNX_THREAD_RECEIVE_BLOCKED, 2.4f, 2, 0, 0, 0.0f);
+    p = sim_process(snapshot, 256, 1, "/sbin/io-pkt-v6-hc", 32 * MiB, 16 * MiB, 4.1f, 0x04, 12940);
+    sim_thread(p, 1, 30, QNX_POLICY_FIFO, QNX_THREAD_RECEIVE_BLOCKED, 1.5f, 1, 0, 0, 0.0f);
+    sim_thread(p, 2, 28, QNX_POLICY_FIFO, QNX_THREAD_READY, 2.6f, 3, 0, 0, 0.0f);
+    p = sim_process(snapshot, 312, 1, "/sbin/devb-eide", 12 * MiB, 6 * MiB, 1.2f, 0, 312);
+    sim_thread(p, 1, 18, QNX_POLICY_FIFO, QNX_THREAD_REPLY_BLOCKED, 1.2f, 0, 124, 0x03, 12.4f);
+    p = sim_process(snapshot, 480, 1, "/usr/bin/safety_actuator", 48 * MiB, 24 * MiB, 14.2f, 0x08, 450119);
+    sim_thread(p, 1, 40, QNX_POLICY_RR, QNX_THREAD_RUNNING, 14.2f, 2, 0, 0, 0.0f);
+    p = sim_process(snapshot, 512, 1, "/usr/bin/can_gateway", 24 * MiB, 12 * MiB, 1.9f, 0x05, 4200);
+    sim_thread(p, 1, 22, QNX_POLICY_FIFO, QNX_THREAD_RECEIVE_BLOCKED, 1.9f, 3, 0, 0, 0.0f);
 
     sim_channel(snapshot, 0x01, 1, "procmgr", 2, 250, 0, 12400, false, 0.0f);
     sim_channel(snapshot, 0x03, 124, "devc-ser8250", 1, 21, 1, 1820, true, 12.4f);
