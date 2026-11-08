@@ -14,51 +14,49 @@ SCENES = [
         "id": "scene1",
         "title": "Introduction",
         "text": (
-            "When building mission-critical software on QNX 8.0, performance is not just about CPU percentages "
-            "or RAM usage. In a true microkernel architecture, system health depends on message-passing latency, "
-            "channel blocking states, and Adaptive Partitioning budgets. Standard Unix tools cannot inspect microkernel "
-            "primitives, and static commands make tracking real-time bottlenecks tedious. This is qnx-top: a lightweight, "
-            "real-time terminal observability tool and IPC profiler designed specifically for QNX Neutrino 8.0."
+            "When building mission-critical software on QNX 8.0, CPU and RAM numbers are only part of the picture. "
+            "In a microkernel system, much of the story is in message passing: which threads are blocked waiting for "
+            "a reply, and from which server. Standard Unix tools do not show that. This is qnx-top, an open source "
+            "diagnostic tool for QNX Neutrino 8.0. Please note: the screens in this video are an animated mock-up "
+            "with sample data, not a live capture. The native collector is pre-release."
         )
     },
     {
         "id": "scene2",
         "title": "Processes & Thread States",
         "text": (
-            "Connected directly to our QNX 8.0 target running inside QEMU, qnx-top queries the microkernel debug and proc "
-            "interfaces with zero real-time jitter. In the process view, qnx-top surfaces genuine QNX-native thread states "
-            "rather than generic POSIX abstractions. We observe real-time priority levels, pulse event frequencies, and "
-            "instant identification of threads in RECEIVE-blocked or REPLY-blocked conditions across all four CPU cores."
+            "This is the process view. For each process, qnx-top shows the scheduler state of its threads, such as "
+            "RECEIVE, READY, or REPLY-blocked, along with priority and CPU percentage. On a QNX target, this "
+            "information comes from the proc file system, using devctl calls. The numbers shown here are sample data."
         )
     },
     {
         "id": "scene3",
         "title": "Channels & Message Passing",
         "text": (
-            "Here is the defining feature of qnx-top: the native Channel and Connection Matrix. In QNX, all client-server "
-            "communication flows through synchronous MsgSend and MsgReceive calls. qnx-top inspects every active Channel ID, "
-            "tracking message throughput and instantaneous latency. Notice this live alert: a worker thread in the storage "
-            "manager is REPLY-blocked on Channel 2 for over 12 milliseconds. qnx-top immediately exposes the server channel "
-            "causing the bottleneck and verifies that priority inheritance is active, preventing priority inversion from stalling critical tasks."
+            "The channel view groups REPLY-blocked client threads by the server channel they are waiting on. "
+            "In this sample, a thread in the storage manager has been waiting on a server channel for over twelve "
+            "milliseconds, so the channel is flagged as stalled. qnx-top measures this by timing how long a thread "
+            "stays in the REPLY state between samples. It does not detect priority inversion yet, and message "
+            "rates are not collected yet."
         )
     },
     {
         "id": "scene4",
         "title": "Adaptive Partitioning & ResMgr",
         "text": (
-            "Next, we inspect QNX's Adaptive Partitioning System. Under heavy multi-core load, qnx-top monitors CPU partition "
-            "guarantees in real time, validating that our Safety-Critical partition maintains its 65 percent guaranteed execution "
-            "budget with under 12 microseconds of scheduling jitter. Switching to the Resource Manager tree, qnx-top catalogs every "
-            "registered path under dev, mapping POSIX pathname resolution directly to owner PIDs and active handler functions."
+            "On a real target, qnx-top detects whether the Adaptive Partitioning scheduler is active, and lists the "
+            "entries under slash dev. Per-partition budgets, and owner and handler details for dev entries, are not "
+            "collected yet and appear as N slash A. The partition and resource manager screens in this video show "
+            "sample data to illustrate the intended layout."
         )
     },
     {
         "id": "scene5",
         "title": "Conclusion & Outro",
         "text": (
-            "qnx-top is completely open source under the MIT License, targets QNX 8.0 Everywhere on both x86_64 and ARM64, and "
-            "includes turnkey QEMU launch scripts so judges can verify it with a single command. Bringing modern, real-time "
-            "observability to the QNX microkernel. Thank you."
+            "qnx-top is open source under the MIT License. A host build with unit tests is included, and validating "
+            "the native QNX build on a real target is the next step. Thank you."
         )
     }
 ]

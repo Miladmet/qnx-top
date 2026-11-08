@@ -1,6 +1,7 @@
 """
-qnx-top: Real-time Terminal Observability & Microkernel IPC Inspector for QNX Neutrino 8.0
-Hackathon Demo / Visualizer Script
+qnx-top: animated terminal MOCK-UP of the planned qnx-top layout (QNX Neutrino 8.0).
+All values are synthetic and randomly generated. This script does not read from any
+system and is not the qnx-top monitor (see src/ for the C implementation).
 Zero-dependency Python 3 script using ANSI color rendering.
 Compatible with Windows PowerShell, Windows Terminal, Linux, and macOS.
 """
@@ -128,7 +129,7 @@ class QnxTopDemo:
     def render_header(self):
         now_str = time.strftime("%H:%M:%S")
         out = []
-        out.append(f"{BG_BLUE}{FG_HI_WHITE}{BOLD}  QNX-TOP v1.0  │  Target: QNX Neutrino 8.0.0 (x86_64 SMP)  │  Host: QEMU-Virt  │  {now_str}  {RESET}")
+        out.append(f"{BG_BLUE}{FG_HI_WHITE}{BOLD}  QNX-TOP v1.0  │  MOCK-UP: SYNTHETIC DATA, NOT A LIVE SYSTEM  │  {now_str}  {RESET}")
         
         # Cores display
         c0 = f"Core 0: {draw_gauge(self.cores[0], 14)} {self.cores[0]:4.1f}% (CtxSw: {self.ctxsw[0]:,}/s)"
@@ -142,7 +143,7 @@ class QnxTopDemo:
         # Memory & Microkernel status line
         mem_pct = (self.mem_used / self.mem_total) * 100
         mem_gauge = draw_gauge(mem_pct, 16, color=FG_HI_GREEN)
-        out.append(f"  RAM: {mem_gauge} {self.mem_used}MB / {self.mem_total}MB ({mem_pct:.1f}%) │ ResMgr Pool: {FG_HI_CYAN}48.2 MB{RESET} │ ShmPool: {FG_HI_CYAN}128 MB{RESET} │ Status: {FG_HI_GREEN}REAL-TIME OPTIMAL{RESET}")
+        out.append(f"  RAM: {mem_gauge} {self.mem_used}MB / {self.mem_total}MB ({mem_pct:.1f}%) │ ResMgr Pool: {FG_HI_CYAN}48.2 MB{RESET} │ ShmPool: {FG_HI_CYAN}128 MB{RESET}")
         out.append(f"{DIM}{'─' * 96}{RESET}")
         
         # Tab Bar
@@ -197,16 +198,16 @@ class QnxTopDemo:
             ("0x03", "124 [devc-ser]", "TID 1 (PRI 21)", " 5 Connections", " 1,820", f"{FG_GREEN}SYNCHRONOUS OK{RESET}"),
             ("0x04", "256 [io-pkt]", "TID 1 (PRI 30)", "22 Connections", "28,950", f"{FG_GREEN}HIGH THROUGHPUT{RESET}"),
             ("0x05", "512 [can_gw]", "TID 1 (PRI 22)", " 4 Connections", " 4,110", f"{FG_GREEN}DETERMINISTIC{RESET}"),
-            ("0x08", "480 [safety_act]", "TID 1 (PRI 40)", " 2 Connections", "50,000", f"{FG_HI_CYAN}HARD REAL-TIME (20µs){RESET}")
+            ("0x08", "480 [safety_act]", "TID 1 (PRI 40)", " 2 Connections", "50,000", f"{FG_HI_CYAN}HIGH RATE{RESET}")
         ]
         
         for c in channels:
             lines.append(f" {BOLD}{c[0]:<6}{RESET} {c[1]:<10} {c[2]:<18} {c[3]:<15} {c[4]:<10} {c[5]}")
             
         lines.append(f"\n {BOLD}IPC Analysis & Message Queue Profiling:{RESET}")
-        lines.append(f" ├─ Synchronous MsgSend/MsgReceive Cycles: {FG_HI_GREEN}97,420 msgs/sec{RESET} (Zero-copy buffers)")
-        lines.append(f" ├─ Pulse Event Deliveries (ISR/Timers):  {FG_HI_CYAN}142,800 pulses/sec{RESET} (Non-blocking)")
-        lines.append(f" └─ {FG_HI_YELLOW}Priority Inversion Guard:{RESET} Channel 0x02 has inherited priority 18 -> boosted.")
+        lines.append(f" ├─ Synchronous MsgSend/MsgReceive Cycles: {FG_HI_GREEN}97,420 msgs/sec{RESET}")
+        lines.append(f" ├─ Pulse Event Deliveries (ISR/Timers):  {FG_HI_CYAN}142,800 pulses/sec{RESET} ")
+        lines.append(f" └─ {DIM}All values on this screen are synthetic sample data.{RESET}")
         return "\n".join(lines)
 
     def render_tab3_aps(self):
@@ -223,9 +224,8 @@ class QnxTopDemo:
         lines.append(f" {BOLD}{'Networking_IO':<22}{RESET} {' 15.0%':<10} {draw_gauge(p2_use*4.0, 16, color=FG_HI_CYAN)} {p2_use:4.1f}%     {'14.9%':<8} {FG_CYAN}[DYNAMIC]{RESET}")
         lines.append(f" {BOLD}{'Background_Telemetry':<22}{RESET} {' 10.0%':<10} {draw_gauge(35.0, 16, color=FG_HI_YELLOW)} {' 6.2%':<9} {' 8.9%':<8} {FG_YELLOW}[BEST EFFORT]{RESET}")
         
-        lines.append(f"\n {BOLD}Partitioning Guarantees under Stress:{RESET}")
+        lines.append(f"\n {BOLD}Sample partition settings (synthetic):{RESET}")
         lines.append(f" • Guarantee: Safety_Critical partition guaranteed min {BOLD}65.0%{RESET} of CPU execution window.")
-        lines.append(f" • Bankruptcy Policy: {FG_HI_GREEN}Active (Graceful partition throttling enabled){RESET}")
         lines.append(f" • Sched Period: {BOLD}100 ms{RESET} | Tick Size: {BOLD}1 ms{RESET} | Max jitter: {FG_HI_GREEN}< 12 µs{RESET}")
         return "\n".join(lines)
 
@@ -247,7 +247,7 @@ class QnxTopDemo:
         for n in nodes:
             lines.append(f" {FG_HI_CYAN}{n[0]:<24}{RESET} {n[1]:<20} {n[2]:<14} {n[3]:<22} {BOLD}{n[4]}{RESET}")
             
-        lines.append(f"\n {BOLD}Resource Manager Integrity Check:{RESET}")
+        lines.append(f"\n {BOLD}Sample resource manager summary (synthetic):{RESET}")
         lines.append(f" • Registered prefix paths: {FG_HI_GREEN}14 mounted{RESET} | Dynamic handlers: {FG_HI_GREEN}OK{RESET}")
         lines.append(f" • resmgr_attach() status: Full POSIX pathname resolution mapped to native QNX microkernel IPC.")
         return "\n".join(lines)
@@ -256,7 +256,7 @@ class QnxTopDemo:
         sec_left = max(0, int(self.cycle_interval - (time.time() - self.last_tab_change)))
         return (
             f"{DIM}{'─'*96}{RESET}\n"
-            f" {BG_DARK_GRAY}{FG_HI_WHITE} AUTO-DEMO MODE: Cycling tab in {sec_left}s │ Press Ctrl+C to Exit │ Frame: {self.tick:04d} {RESET}"
+            f" {BG_DARK_GRAY}{FG_HI_WHITE} MOCK-UP / SYNTHETIC DATA: Cycling tab in {sec_left}s │ Press Ctrl+C to Exit │ Frame: {self.tick:04d} {RESET}"
         )
 
     def run(self):

@@ -42,7 +42,7 @@ When an engineering manager or tech lead contacts you via email or your booking 
 > 2. Are you experiencing a specific real-time blocker (e.g. deadline jitter, thread stalls in `REPLY-blocked`, or driver architecture)?
 > 3. Do you have a mutual NDA you prefer to use, or should I send over our standard mutual NDA?
 >
-> We typically run these engagements as fixed-scope sprints ($2,950 for Jitter/Latency Audits, $5,800 for Resource Manager Architecture) so your team has guaranteed deliverables with zero procurement delays.
+> We typically run these engagements as fixed-scope sprints ($2,950 for Jitter/Latency Audits, $5,800 for Resource Manager Architecture) so your team gets a defined scope, a fixed price, and no drawn-out procurement.
 >
 > You can also grab a quick 20-minute slot on my calendar here if you prefer a call: [Insert Cal.com Link]
 >
@@ -63,7 +63,7 @@ When an engineering manager or tech lead contacts you via email or your booking 
 > **Scope & Deliverables:**
 > 1. Full IPC Channel and Message-Passing analysis on your [Vehicle / Robot Controller] subsystems.
 > 2. Identification of thread blocking states (`REPLY-blocked` / priority inversion bottlenecks).
-> 3. Formal Executive Remediation Report with targeted C/C++ code diffs to restore deterministic < 50µs timing guarantees.
+> 3. Formal Executive Remediation Report with targeted C/C++ code recommendations for the bottlenecks found. Any timing targets are agreed in the SOW and measured on your hardware; no latency outcome is guaranteed.
 > 4. 1-hour debrief video call with your engineering team.
 >
 > **Commercial Terms:**

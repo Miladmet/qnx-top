@@ -4,6 +4,8 @@
 
 As the creators of **`qnx-top`**, we provide specialized, fixed-scope engineering consulting for Tier-1 automotive suppliers, medical device manufacturers, robotics companies, and defense contractors.
 
+> **About `qnx-top`:** it is an open-source, pre-release diagnostic aid. Its native QNX collector has not yet been validated on a target, and several metrics (per-core load, message rates, APS budgets) are not collected yet. Audit findings come from engineering analysis on your system, not from `qnx-top` output alone.
+
 ---
 
 ## 1. Productized Consulting Packages

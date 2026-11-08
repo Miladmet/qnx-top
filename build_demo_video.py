@@ -2,8 +2,8 @@
 Builds the complete 1080p MP4 demonstration video for qnx-top:
 - 1920x1080 resolution at 10 FPS
 - Full synchronized voiceover narration (master_narration.wav)
-- High-definition graphical terminal animations
-- Perfectly timed for Hackathon submission (< 3 minutes)
+- Animated MOCK-UP of the qnx-top layout using sample data (not a live capture)
+- Scene timing is derived from the generated scene WAV files
 """
 
 import os
@@ -41,6 +41,21 @@ BLUE = (59, 130, 246)
 PURPLE = (168, 85, 247)
 
 
+def scene_end_times():
+    """Cumulative scene end times in seconds, from scene1..5.wav (+1.0 s silence between scenes)."""
+    import wave
+    ends = []
+    total = 0.0
+    for i in range(1, 6):
+        path = os.path.join(SCRIPT_DIR, f"scene{i}.wav")
+        with wave.open(path, "rb") as w:
+            total += w.getnframes() / float(w.getframerate())
+        if i < 5:
+            total += 1.0
+        ends.append(total)
+    return ends
+
+
 def draw_gauge(percent, width=16, fill_char="■", empty_char="·"):
     fill_len = int((percent / 100.0) * width)
     fill_len = max(0, min(width, fill_len))
@@ -53,7 +68,9 @@ class VideoBuilder:
         self.width = 1920
         self.height = 1080
         self.fps = 10
-        self.total_seconds = 167.23
+        # Scene end times come from the generated scene WAVs (+1.0 s gap between scenes).
+        self.scene_ends = scene_end_times()
+        self.total_seconds = self.scene_ends[-1]
         self.total_frames = int(self.total_seconds * self.fps)
         
         # Load fonts
@@ -78,7 +95,7 @@ class VideoBuilder:
         draw.ellipse([(130, 70), (145, 85)], fill=YELLOW)
         draw.ellipse([(155, 70), (170, 85)], fill=GREEN)
         
-        title_text = "qnx-top — QNX Neutrino 8.0.0 (x86_64 SMP 4-Core) [QEMU Virtual Target]"
+        title_text = "qnx-top mock-up [SAMPLE DATA, NOT A LIVE CAPTURE]"
         if subtitle:
             title_text += f" │ {subtitle}"
         draw.text((190, 68), title_text, font=self.font_term_title, fill=TEXT_MUTED)
@@ -97,7 +114,7 @@ class VideoBuilder:
         # Top banner
         draw.rectangle([(110, y), (1810, y + 36)], fill=(30, 58, 138))
         draw.text((125, y + 7), "QNX-TOP v1.0", font=self.font_term_bold, fill=TEXT_WHITE)
-        draw.text((280, y + 7), "│  Target: QNX Neutrino 8.0.0 (x86_64 SMP)  │  Host: QEMU-Virt  │  Status: REAL-TIME OPTIMAL", font=self.font_term, fill=(191, 219, 254))
+        draw.text((280, y + 7), "│  Layout mock-up  │  Sample data  │  Not a live capture", font=self.font_term, fill=(191, 219, 254))
         
         y += 50
         # Core 0 and Core 1
@@ -128,7 +145,7 @@ class VideoBuilder:
         fm, em = draw_gauge((mem_used/4096)*100, 16)
         draw.text((120, y), f"RAM: ", font=self.font_term_bold, fill=TEXT_WHITE)
         draw.text((170, y), f"[{fm}", font=self.font_term_bold, fill=GREEN)
-        draw.text((170 + len(fm)*11, y), f"{em}] {mem_used}MB / 4096MB (19.8%)  │ ResMgr Pool: 48.2 MB │ ShmPool: 128 MB │ Microkernel: HEALTHY", font=self.font_term, fill=TEXT_MUTED)
+        draw.text((170 + len(fm)*11, y), f"{em}] {mem_used}MB / 4096MB (19.8%)  │ ResMgr Pool: 48.2 MB │ ShmPool: 128 MB │ (sample)", font=self.font_term, fill=TEXT_MUTED)
         
         y += 36
         draw.line([(110, y), (1810, y)], fill=BORDER_TERM, width=1)
@@ -173,24 +190,24 @@ class VideoBuilder:
         draw.text((170, 350), "❌ The Problem: Standard Tools on Microkernels", font=self.font_h2, fill=YELLOW)
         draw.text((170, 400), "• Traditional Unix tools (top, htop) only see CPU% & RAM.", font=self.font_body, fill=TEXT_MUTED)
         draw.text((170, 445), "• They are blind to native QNX microkernel message passing.", font=self.font_body, fill=TEXT_MUTED)
-        draw.text((170, 490), "• Stalled threads in REPLY-blocked state cause hidden deadlocks.", font=self.font_body, fill=TEXT_MUTED)
+        draw.text((170, 490), "• Threads stuck in REPLY-blocked are hard to spot.", font=self.font_body, fill=TEXT_MUTED)
         draw.text((170, 535), "• Static commands (pidin) make real-time tracing tedious.", font=self.font_body, fill=TEXT_MUTED)
-        draw.text((170, 580), "• Heavy commercial trace suites can perturb real-time determinism.", font=self.font_body, fill=TEXT_MUTED)
+        draw.text((170, 580), "• Full trace suites need extra setup and analysis.", font=self.font_body, fill=TEXT_MUTED)
         
         # Right Box: qnx-top architecture
         draw.rounded_rectangle([(960, 320), (1740, 720)], radius=10, fill=(15, 23, 42), outline=CYAN, width=2)
         draw.text((990, 350), "✅ The Solution: qnx-top Native Microkernel Inspection", font=self.font_h2, fill=GREEN)
         draw.text((990, 400), "• Real-Time Thread States: RECEIVE, REPLY-blocked, READY.", font=self.font_body, fill=TEXT_WHITE)
         draw.text((990, 445), "• Channel & Connection Matrix (MsgSend / MsgReceive queues).", font=self.font_body, fill=TEXT_WHITE)
-        draw.text((990, 490), "• Priority Inversion & Deadlock Watchdog (< 50µs detection).", font=self.font_body, fill=TEXT_WHITE)
+        draw.text((990, 490), "• REPLY-blocked time per thread (sampled each refresh).", font=self.font_body, fill=TEXT_WHITE)
         draw.text((990, 535), "• Adaptive Partitioning System (APS) CPU budget monitors.", font=self.font_body, fill=TEXT_WHITE)
-        draw.text((990, 580), "• Zero-overhead daemon querying QNX /proc & debug interfaces.", font=self.font_body, fill=TEXT_WHITE)
+        draw.text((990, 580), "• Reads QNX /proc via devctl. Native path is pre-release.", font=self.font_body, fill=TEXT_WHITE)
         
         # Bottom highlights bar
         draw.rounded_rectangle([(140, 760), (1740, 970)], radius=10, fill=(2, 6, 23), outline=BORDER_TERM, width=1)
         draw.text((180, 790), "COMPLIANCE & CATEGORY ALIGNMENT:", font=self.font_term_bold, fill=CYAN)
         draw.text((180, 830), "• Category: Developer Tooling & Host Tools", font=self.font_term, fill=TEXT_WHITE)
-        draw.text((180, 865), "• Target OS: QNX Neutrino 8.0 (QNX Everywhere / QEMU x86_64 & aarch64)", font=self.font_term, fill=TEXT_WHITE)
+        draw.text((180, 865), "• Target OS: QNX Neutrino 8.0 (native build not yet validated on target)", font=self.font_term, fill=TEXT_WHITE)
         draw.text((180, 900), "• Bonus Prize Contender: Best Use of QNX-specific Technologies (ResMgr, Channels, Pulses, APS)", font=self.font_term, fill=YELLOW)
 
     def render_scene2(self, draw, frame_idx, t_scene):
@@ -226,7 +243,7 @@ class VideoBuilder:
         y += 25
         # Highlight Box for REPLY-blocked stall
         draw.rounded_rectangle([(110, y), (1810, y + 60)], radius=6, fill=(69, 26, 3), outline=YELLOW, width=1)
-        draw.text((130, y + 18), "● REAL-TIME ALERT: Thread in /sbin/devb-eide is REPLY-blocked on Channel 0x02 for 12.4ms (Threshold: 2.0ms)", font=self.font_term_bold, fill=YELLOW)
+        draw.text((130, y + 18), "● SAMPLE ALERT: Thread in /sbin/devb-eide REPLY-blocked on a server channel for 12.4ms (threshold 2.0ms)", font=self.font_term_bold, fill=YELLOW)
 
     def render_scene3(self, draw, frame_idx, t_scene):
         # Scene 3: Tab F2 Channel Matrix & IPC Inspector
@@ -244,7 +261,7 @@ class VideoBuilder:
             ("0x03", "124 [devc-ser]", "TID 1 (PRI 21)", " 5 Connections", " 1,820", "SYNCHRONOUS OK", GREEN),
             ("0x04", "256 [io-pkt]", "TID 1 (PRI 30)", "22 Connections", "28,950", "HIGH THROUGHPUT", GREEN),
             ("0x05", "512 [can_gw]", "TID 1 (PRI 22)", " 4 Connections", " 4,110", "DETERMINISTIC", GREEN),
-            ("0x08", "480 [safety_act]", "TID 1 (PRI 40)", " 2 Connections", "50,000", "HARD REAL-TIME (20µs)", CYAN)
+            ("0x08", "480 [safety_act]", "TID 1 (PRI 40)", " 2 Connections", "50,000", "HIGH RATE", CYAN)
         ]
         
         for c in channels:
@@ -255,9 +272,9 @@ class VideoBuilder:
         y += 30
         draw.rounded_rectangle([(110, y), (1810, y + 160)], radius=8, fill=(15, 23, 42), outline=CYAN, width=1)
         draw.text((130, y + 20), "MICROKERNEL IPC DEEP INSPECTION:", font=self.font_term_bold, fill=CYAN)
-        draw.text((130, y + 55), "├─ Synchronous MsgSend / MsgReceive Cycles: 97,420 msgs/sec (Zero-copy kernel buffers)", font=self.font_term, fill=GREEN)
-        draw.text((130, y + 90), "├─ Pulse Event Deliveries (ISR / Timers):  142,800 pulses/sec (Non-blocking asynchronous delivery)", font=self.font_term, fill=TEXT_WHITE)
-        draw.text((130, y + 125), "└─ Priority Inversion Guard: Channel 0x02 inherited priority 18 -> Kernel boosted to prevent deadlock.", font=self.font_term_bold, fill=YELLOW)
+        draw.text((130, y + 55), "├─ Sample total message rate: 97,420 msgs/sec (rates are N/A in the real tool for now)", font=self.font_term, fill=GREEN)
+        draw.text((130, y + 90), "├─ Sample pulse rate: 142,800 pulses/sec (pulse counts are N/A in the real tool for now)", font=self.font_term, fill=TEXT_WHITE)
+        draw.text((130, y + 125), "└─ All values on this screen are synthetic sample data.", font=self.font_term_bold, fill=YELLOW)
 
     def render_scene4(self, draw, frame_idx, t_scene):
         # Scene 4: Split view of APS Partitions & Resource Manager Tree
@@ -277,7 +294,7 @@ class VideoBuilder:
         draw.text((120, y), f"{'Safety_Critical':<24} {'65.0%':<20}", font=self.font_term, fill=TEXT_WHITE)
         draw.text((120 + 480, y), f"[{f_safe}{e_safe}] 48.2%", font=self.font_term_bold, fill=GREEN)
         draw.text((120 + 820, y), f"{'< 12 µs':<15}", font=self.font_term, fill=TEXT_MUTED)
-        draw.text((120 + 1020, y), "[HARD REAL-TIME GUARANTEED]", font=self.font_term_bold, fill=GREEN)
+        draw.text((120 + 1020, y), "[HARD REAL-TIME]", font=self.font_term_bold, fill=GREEN)
         y += 28
         
         f_net, e_net = draw_gauge(15.0, 16)
@@ -329,45 +346,40 @@ class VideoBuilder:
         
         # Center Terminal Code Box
         draw.rounded_rectangle([(140, 320), (1740, 680)], radius=10, fill=(15, 23, 42), outline=BORDER_TERM, width=2)
-        draw.text((180, 360), "# 1. Clone the Public Repository", font=self.font_term_bold, fill=TEXT_MUTED)
-        draw.text((180, 400), "git clone https://github.com/your-username/qnx-top.git", font=self.font_term, fill=CYAN)
+        draw.text((180, 360), "# 1. Clone the repository", font=self.font_term_bold, fill=TEXT_MUTED)
+        draw.text((180, 400), "git clone https://github.com/Miladmet/qnx-top.git", font=self.font_term, fill=CYAN)
         
-        draw.text((180, 460), "# 2. Run Turnkey QEMU Target Emulator & Verify Tooling", font=self.font_term_bold, fill=TEXT_MUTED)
-        draw.text((180, 500), "./scripts/run_qemu.sh --target=qnx800-x86_64", font=self.font_term, fill=CYAN)
+        draw.text((180, 460), "# 2. Build and run the unit tests on a host", font=self.font_term_bold, fill=TEXT_MUTED)
+        draw.text((180, 500), "cmake -B build && cmake --build build && ctest --test-dir build", font=self.font_term, fill=CYAN)
         
-        draw.text((180, 560), "# 3. Run Standalone Interactive Host Demo", font=self.font_term_bold, fill=TEXT_MUTED)
+        draw.text((180, 560), "# 3. Run the animated mock-up (synthetic data)", font=self.font_term_bold, fill=TEXT_MUTED)
         draw.text((180, 600), "python demo_qnx_top.py", font=self.font_term, fill=CYAN)
         
         # Summary Badges Box
         draw.rounded_rectangle([(140, 720), (1740, 960)], radius=10, fill=(2, 6, 23), outline=BORDER_TERM, width=1)
         draw.text((180, 755), "SUBMISSION METADATA:", font=self.font_term_bold, fill=CYAN)
         draw.text((180, 795), "• Category: Developer Tooling & Host Tools", font=self.font_body, fill=TEXT_WHITE)
-        draw.text((180, 835), "• QNX Technologies Used: Native Message Passing, Channels, Resource Managers, APS, procmgr abilities", font=self.font_body, fill=TEXT_WHITE)
-        draw.text((180, 875), "• Video Duration: 2 min 47 sec (Under the 3-minute hard limit)", font=self.font_body, fill=GREEN)
-        draw.text((180, 915), "• Commercial Support & Consulting Available: See CONSULTING.md", font=self.font_body, fill=YELLOW)
+        draw.text((180, 835), "• QNX interfaces used: procfs devctl, resource manager (/dev/qnx_top), SchedCtl APS probe", font=self.font_body, fill=TEXT_WHITE)
+        draw.text((180, 875), f"• Video Duration: {int(self.total_seconds // 60)} min {int(self.total_seconds % 60)} sec", font=self.font_body, fill=GREEN)
+        draw.text((180, 915), "• Commercial Support & Consulting Available: See docs/commercial/CONSULTING.md", font=self.font_body, fill=YELLOW)
 
     def render_frame(self, frame_idx):
         t = frame_idx / float(self.fps)
         img = Image.new("RGB", (self.width, self.height), BG_CANVAS)
         draw = ImageDraw.Draw(img)
         
-        # Scene transition times based on master_narration durations
-        # Scene 1: 0.0s - 38.02s
-        # Scene 2: 38.02s - 70.29s
-        # Scene 3: 70.29s - 110.22s
-        # Scene 4: 110.22s - 143.74s
-        # Scene 5: 143.74s - 167.23s
-        
-        if t < 38.02:
+        # Scene transition times derived from the narration durations
+        e = self.scene_ends
+        if t < e[0]:
             self.render_scene1(draw, frame_idx, t)
-        elif t < 70.29:
-            self.render_scene2(draw, frame_idx, t - 38.02)
-        elif t < 110.22:
-            self.render_scene3(draw, frame_idx, t - 70.29)
-        elif t < 143.74:
-            self.render_scene4(draw, frame_idx, t - 110.22)
+        elif t < e[1]:
+            self.render_scene2(draw, frame_idx, t - e[0])
+        elif t < e[2]:
+            self.render_scene3(draw, frame_idx, t - e[1])
+        elif t < e[3]:
+            self.render_scene4(draw, frame_idx, t - e[2])
         else:
-            self.render_scene5(draw, frame_idx, t - 143.74)
+            self.render_scene5(draw, frame_idx, t - e[3])
             
         return img
 
