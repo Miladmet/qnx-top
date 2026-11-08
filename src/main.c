@@ -113,7 +113,7 @@ static void fmt_chid(char *buf, size_t n, int chid) {
 }
 
 static void print_process_rows(const qnx_system_snapshot_t *snapshot) {
-    char a[32], b[32], c[32], d[48];
+    char a[64], b[64], c[64], d[96];
 
     printf("PID    TID  PRI   STATE             CPU%%     RSS      CHID   PULSES     COMMAND\n");
     printf("------------------------------------------------------------------------------------------\n");
@@ -143,7 +143,7 @@ static void print_process_rows(const qnx_system_snapshot_t *snapshot) {
 }
 
 static void print_thread_rows(const qnx_system_snapshot_t *snapshot, int pid_filter) {
-    char a[32], b[32], c[32], d[48];
+    char a[64], b[64], c[64], d[96];
     int shown_processes = 0;
 
     for (int i = 0; i < snapshot->num_processes; i++) {
@@ -162,7 +162,7 @@ static void print_thread_rows(const qnx_system_snapshot_t *snapshot, int pid_fil
 
         for (int t = 0; t < p->num_threads; t++) {
             const qnx_thread_info_t *th = &p->threads[t];
-            char cpu_no[8];
+            char cpu_no[16];
             if (th->last_cpu >= 0) snprintf(cpu_no, sizeof(cpu_no), "%d", th->last_cpu);
             else snprintf(cpu_no, sizeof(cpu_no), "N/A");
 
@@ -194,7 +194,7 @@ static void print_thread_rows(const qnx_system_snapshot_t *snapshot, int pid_fil
 }
 
 static void print_snapshot(const qnx_system_snapshot_t *snapshot, const view_options_t *view) {
-    char a[32], b[32], c[32], d[32];
+    char a[64], b[64], c[64], d[64];
 
     printf("==========================================================================================\n");
     printf(" QNX-TOP v%s | %s | Cores: %u\n",
@@ -248,12 +248,12 @@ static void print_snapshot(const qnx_system_snapshot_t *snapshot, const view_opt
     }
     for (int i = 0; i < snapshot->num_channels; i++) {
         const qnx_channel_info_t *ch = &snapshot->channels[i];
-        char rx[32];
+        char rx[64];
         if (ch->receive_tid >= 0) snprintf(rx, sizeof(rx), "TID %d (PRI %d)", ch->receive_tid, ch->receive_priority);
         else snprintf(rx, sizeof(rx), "N/A");
 
-        char stall[48];
-        char status[64];
+        char stall[96];
+        char status[160];
         fmt_stall(stall, sizeof(stall), ch->max_stall_latency_ms, ch->stall_source);
         if (ch->blocked_clients == 0) snprintf(status, sizeof(status), "no blocked clients");
         else snprintf(status, sizeof(status), "%s %s", ch->is_stalled ? "STALL" : "OK", stall);
