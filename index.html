@@ -82,7 +82,7 @@
 
     /* Terminal Window */
     .terminal-container {
-      max-width: 960px;
+      max-width: 1060px;
       margin: 40px auto 80px;
       border-radius: 12px;
       overflow: hidden;
@@ -103,14 +103,16 @@
     .dot-red { background: #ef4444; }
     .dot-yellow { background: #f59e0b; }
     .dot-green { background: #10b981; }
-    .terminal-title { margin-left: auto; font-family: var(--font-mono); font-size: 12px; color: var(--text-muted); }
+    .terminal-title { margin-left: auto; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
     .terminal-body {
       padding: 24px;
       font-family: var(--font-mono);
-      font-size: 14px;
-      line-height: 1.6;
+      font-size: 13.5px;
+      line-height: 1.5;
       color: #94a3b8;
+      white-space: pre;
       overflow-x: auto;
+      margin: 0;
     }
     .t-cyan { color: #38bdf8; }
     .t-green { color: #10b981; }
@@ -207,18 +209,16 @@
           <div class="dot dot-green"></div>
           <div class="terminal-title">qnx-top — QNX 8.0.0 (x86_64 SMP 4-Core)</div>
         </div>
-        <div class="terminal-body">
-<span class="t-cyan">QNX-TOP v1.0</span> │ Target: QNX Neutrino 8.0.0 │ Host: QEMU-Virt │ Status: <span class="t-green">REAL-TIME OPTIMAL</span>
+        <pre class="terminal-body"><span class="t-cyan">QNX-TOP v1.0</span> │ Target: QNX Neutrino 8.0.0 │ Host: QEMU-Virt │ Status: <span class="t-green">REAL-TIME OPTIMAL</span>
 Core 0: [■■■■■■■■■■······] 64.2% (CtxSw: 3,920/s)  │ Core 1: [■■■■■···········] 32.1% (CtxSw: 2,140/s)
 RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48.2 MB │ Channel Messages: <span class="t-green">97,420 msgs/sec</span>
-<span style="opacity:0.4">──────────────────────────────────────────────────────────────────────────────────────────</span>
-<span class="t-white">PID    TID  PRI   STATE             CHID   PULSES/S  COMMAND</span>
-1      1    255r  <span class="t-green">RUNNING</span>           0x01   2,410     [kernel/procmgr]
-124    1    21f   <span class="t-cyan">RECEIVE</span>           0x03   84,102    /sbin/devc-ser8250
-256    1    30f   <span class="t-cyan">RECEIVE</span>           0x04   12,940    /sbin/io-pkt-v6-hc
-312    1    18f   <span class="t-yellow">REPLY-blocked</span>     0x02   312       /sbin/devb-eide <span class="t-yellow">(Stall: 12.4ms)</span>
-480    1    40r   <span class="t-green">RUNNING</span>           0x08   450,119   /usr/bin/safety_actuator
-        </div>
+<span style="opacity:0.35">──────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="t-white">PID    TID  PRI   STATE             CHID   PULSES/S   COMMAND</span>
+1      1    255r  <span class="t-green">RUNNING</span>           0x01   2,410      [kernel/procmgr]
+124    1    21f   <span class="t-cyan">RECEIVE</span>           0x03   84,102     /sbin/devc-ser8250
+256    1    30f   <span class="t-cyan">RECEIVE</span>           0x04   12,940     /sbin/io-pkt-v6-hc
+312    1    18f   <span class="t-yellow">REPLY-blocked</span>     0x02   312        /sbin/devb-eide <span class="t-yellow">(Stall: 12.4ms)</span>
+480    1    40r   <span class="t-green">RUNNING</span>           0x08   450,119    /usr/bin/safety_actuator</pre>
       </div>
     </div>
 
