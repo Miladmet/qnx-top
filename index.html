@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>qnx-top | Microkernel Observability & QNX 8.0 Consulting</title>
+  <meta name="description" content="Real-time terminal observability and IPC profiler for BlackBerry QNX 8.0 Neutrino, plus specialized real-time systems consulting.">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: #111726;
+      --card-border: #1e293b;
+      --text: #e2e8f0;
+      --text-muted: #94a3b8;
+      --primary: #38bdf8;
+      --primary-glow: rgba(56, 189, 248, 0.2);
+      --accent: #10b981;
+      --warning: #f59e0b;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, sans-serif;
+      --font-mono: 'Fira Code', monospace;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: var(--font-sans);
+      line-height: 1.6;
+      overflow-x: hidden;
+    }
+    a { color: var(--primary); text-decoration: none; transition: all 0.2s; }
+    a:hover { color: #7dd3fc; }
+    .container { max-width: 1160px; margin: 0 auto; padding: 0 24px; }
+    
+    /* Navigation */
+    header {
+      padding: 24px 0;
+      border-bottom: 1px solid var(--card-border);
+      position: sticky;
+      top: 0;
+      background: rgba(9, 13, 22, 0.85);
+      backdrop-filter: blur(12px);
+      z-index: 100;
+    }
+    .nav-wrap { display: flex; justify-content: space-between; align-items: center; }
+    .logo { font-size: 20px; font-weight: 800; font-family: var(--font-mono); color: #fff; display: flex; align-items: center; gap: 8px; }
+    .logo span { color: var(--primary); }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 10px 20px;
+      font-weight: 600;
+      border-radius: 8px;
+      font-size: 14px;
+      transition: all 0.2s;
+    }
+    .btn-primary { background: var(--primary); color: #020617; }
+    .btn-primary:hover { background: #7dd3fc; transform: translateY(-1px); }
+    .btn-outline { border: 1px solid var(--card-border); color: #fff; background: rgba(255,255,255,0.02); }
+    .btn-outline:hover { border-color: var(--primary); }
+
+    /* Hero */
+    .hero { padding: 90px 0 60px; text-align: center; }
+    .badge {
+      display: inline-block;
+      padding: 6px 14px;
+      background: rgba(56, 189, 248, 0.1);
+      border: 1px solid rgba(56, 189, 248, 0.3);
+      color: var(--primary);
+      border-radius: 9999px;
+      font-size: 13px;
+      font-weight: 600;
+      margin-bottom: 24px;
+    }
+    h1 { font-size: 52px; font-weight: 800; line-height: 1.15; letter-spacing: -1px; margin-bottom: 20px; }
+    h1 span { background: linear-gradient(135deg, #38bdf8 0%, #818cf8 100%); -webkit-background-clip: text; -webkit-text-fill-color: transparent; }
+    .hero p { font-size: 20px; color: var(--text-muted); max-width: 760px; margin: 0 auto 36px; }
+
+    /* Terminal Window */
+    .terminal-container {
+      max-width: 1060px;
+      margin: 40px auto 80px;
+      border-radius: 12px;
+      overflow: hidden;
+      box-shadow: 0 25px 60px -15px rgba(0,0,0,0.7), 0 0 30px var(--primary-glow);
+      border: 1px solid var(--card-border);
+      background: #020617;
+      text-align: left;
+    }
+    .terminal-header {
+      background: #0f172a;
+      padding: 12px 18px;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      border-bottom: 1px solid var(--card-border);
+    }
+    .dot { width: 12px; height: 12px; border-radius: 50%; }
+    .dot-red { background: #ef4444; }
+    .dot-yellow { background: #f59e0b; }
+    .dot-green { background: #10b981; }
+    .terminal-title { margin-left: auto; font-family: var(--font-mono); font-size: 13px; color: var(--text-muted); }
+    .terminal-body {
+      padding: 24px;
+      font-family: var(--font-mono);
+      font-size: 13.5px;
+      line-height: 1.5;
+      color: #94a3b8;
+      white-space: pre;
+      overflow-x: auto;
+      margin: 0;
+    }
+    .t-cyan { color: #38bdf8; }
+    .t-green { color: #10b981; }
+    .t-yellow { color: #f59e0b; }
+    .t-white { color: #f8fafc; font-weight: 600; }
+
+    /* Features Grid */
+    .features { padding: 40px 0 80px; }
+    .section-title { text-align: center; margin-bottom: 50px; }
+    .section-title h2 { font-size: 36px; font-weight: 700; margin-bottom: 12px; }
+    .grid-3 { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 24px; }
+    .card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 32px;
+      transition: all 0.2s;
+    }
+    .card:hover { border-color: rgba(56, 189, 248, 0.4); transform: translateY(-2px); }
+    .card-icon { font-size: 28px; margin-bottom: 16px; }
+    .card h3 { font-size: 20px; font-weight: 700; margin-bottom: 12px; }
+    .card p { color: var(--text-muted); font-size: 15px; }
+
+    /* Pricing Section */
+    .pricing { padding: 80px 0; background: rgba(17, 23, 38, 0.5); border-top: 1px solid var(--card-border); border-bottom: 1px solid var(--card-border); }
+    .pricing-card {
+      background: #090d16;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 36px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+    .pricing-card.featured {
+      border-color: var(--primary);
+      box-shadow: 0 0 25px var(--primary-glow);
+    }
+    .pricing-tag {
+      position: absolute;
+      top: -12px;
+      left: 32px;
+      background: var(--primary);
+      color: #020617;
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      padding: 4px 12px;
+      border-radius: 999px;
+    }
+    .price { font-size: 40px; font-weight: 800; color: #fff; margin: 16px 0; }
+    .price span { font-size: 16px; font-weight: 500; color: var(--text-muted); }
+    .price-features { list-style: none; margin: 24px 0; flex-grow: 1; }
+    .price-features li { padding: 8px 0; color: var(--text-muted); display: flex; align-items: center; gap: 8px; font-size: 14px; }
+    .price-features li::before { content: "✓"; color: var(--accent); font-weight: 800; }
+
+    /* Footer */
+    footer { padding: 50px 0; border-top: 1px solid var(--card-border); color: var(--text-muted); font-size: 14px; text-align: center; }
+  </style>
+</head>
+<body>
+
+  <header>
+    <div class="container nav-wrap">
+      <div class="logo"><span>⚡</span> qnx-top</div>
+      <div class="nav-links">
+        <a href="#features">Features</a>
+        <a href="#consulting">Consulting Services</a>
+        <a href="https://github.com/Miladmet/qnx-top" class="btn btn-outline" target="_blank">GitHub Repo</a>
+        <a href="#consulting" class="btn btn-primary">Book Consultation</a>
+      </div>
+    </div>
+  </header>
+
+  <main>
+    <section class="hero">
+      <div class="container">
+        <div class="badge">Built for BlackBerry QNX Neutrino 8.0 (Everywhere)</div>
+        <h1>Real-Time Microkernel Observability<br><span>For Mission-Critical Systems</span></h1>
+        <p>An open-source diagnostic tool that shows which QNX threads are REPLY-blocked, on which server channel, and for how long. Pre-release: the native QNX collector has not yet been validated on a target.</p>
+        <div>
+          <a href="#consulting" class="btn btn-primary" style="padding: 14px 28px; font-size: 16px;">Hire a QNX 8.0 Systems Specialist</a>
+          <a href="https://github.com/Miladmet/qnx-top" class="btn btn-outline" style="padding: 14px 28px; font-size: 16px; margin-left: 12px;">View Open Source Code</a>
+        </div>
+      </div>
+    </section>
+
+    <!-- Terminal Display -->
+    <div class="container">
+      <div class="terminal-container">
+        <div class="terminal-header">
+          <div class="dot dot-red"></div>
+          <div class="dot dot-yellow"></div>
+          <div class="dot dot-green"></div>
+          <div class="terminal-title">qnx-top — sample output (illustrative mock-up)</div>
+        </div>
+        <pre class="terminal-body"><span class="t-cyan">QNX-TOP v1.0</span> │ SAMPLE DATA, NOT A LIVE CAPTURE
+Core 0: [■■■■■■■■■■······] 64.2% (CtxSw: 3,920/s)  │ Core 1: [■■■■■···········] 32.1% (CtxSw: 2,140/s)
+RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48.2 MB │ Channel Messages: <span class="t-green">97,420 msgs/sec</span>
+<span style="opacity:0.35">──────────────────────────────────────────────────────────────────────────────────────────</span>
+<span class="t-white">PID    TID  PRI   STATE             CHID   PULSES/S   COMMAND</span>
+1      1    255r  <span class="t-green">RUNNING</span>           0x01   2,410      [kernel/procmgr]
+124    1    21f   <span class="t-cyan">RECEIVE</span>           0x03   84,102     /sbin/devc-ser8250
+256    1    30f   <span class="t-cyan">RECEIVE</span>           0x04   12,940     /sbin/io-pkt-v6-hc
+312    1    18f   <span class="t-yellow">REPLY-blocked</span>     0x02   312        /sbin/devb-eide <span class="t-yellow">(Stall: 12.4ms)</span>
+480    1    40r   <span class="t-green">RUNNING</span>           0x08   450,119    /usr/bin/safety_actuator</pre>
+      </div>
+    </div>
+
+    <!-- Features -->
+    <section class="features" id="features">
+      <div class="container">
+        <div class="section-title">
+          <h2>Purpose-Built for QNX Microkernels</h2>
+          <p>Traditional Unix tools can't see microkernel primitives. qnx-top bridges the gap.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">🔀</div>
+            <h3>REPLY-Blocked Client Tracking</h3>
+            <p>Shows which threads are REPLY-blocked, on which server process and channel, and for how long. Priority inversion detection is not implemented.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">🛡️</div>
+            <h3>Adaptive Partitioning (APS)</h3>
+            <p>Detects whether the APS scheduler is active on the target. Per-partition budgets are not read yet and are shown as N/A.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">📂</div>
+            <h3>/dev Listing and Telemetry Endpoint</h3>
+            <p>Lists the entries under /dev (owner and handler details are shown as N/A) and serves a text report at /dev/qnx_top.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Consulting Packages (Strategy 3) -->
+    <section class="pricing" id="consulting">
+      <div class="container">
+        <div class="section-title">
+          <h2>Specialized QNX 8.0 Consulting Services</h2>
+          <p>Productized, fixed-fee engineering advisory for automotive, robotics, and medical device teams.</p>
+        </div>
+        <div class="grid-3">
+          
+          <div class="pricing-card">
+            <h3>Jitter & Latency Audit</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Resolve intermittent timing spikes & stalls.</p>
+            <div class="price">$2,950 <span>/ one-time</span></div>
+            <ul class="price-features">
+              <li>Microkernel IPC & Channel bottleneck audit</li>
+              <li>Priority inversion & scheduling assessment</li>
+              <li>Detailed report with actionable code diffs</li>
+              <li>3–5 business day turnaround</li>
+              <li>Mutual NDA protection</li>
+            </ul>
+            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Jitter and Latency Audit" class="btn btn-outline" style="text-align:center;">Book Audit</a>
+          </div>
+
+          <div class="pricing-card featured">
+            <div class="pricing-tag">Most Popular</div>
+            <h3>Resource Manager Sprint</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Custom /dev driver & hardware integration.</p>
+            <div class="price">$5,800 <span>/ one-time</span></div>
+            <ul class="price-features">
+              <li>Turnkey multi-threaded QNX 8.0 ResMgr skeleton</li>
+              <li>POSIX _IO_READ, _IO_WRITE, _IO_DEVCTL handlers</li>
+              <li>procmgr_ability() security sandboxing</li>
+              <li>QEMU regression test suite</li>
+              <li>Full IP ownership transferred to you</li>
+            </ul>
+            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Resource Manager Sprint" class="btn btn-primary" style="text-align:center;">Start Sprint</a>
+          </div>
+
+          <div class="pricing-card">
+            <h3>Systems Architect Retainer</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Senior QNX advisory on demand.</p>
+            <div class="price">$4,500 <span>/ month</span></div>
+            <ul class="price-features">
+              <li>15–20 dedicated advisory hours / month</li>
+              <li>Weekly architecture & PR review calls</li>
+              <li>Direct Slack / Teams access</li>
+              <li>Priority response (< 24h) for blocker bugs</li>
+              <li>Ongoing QNX Everywhere & QEMU support</li>
+            </ul>
+            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Systems Architect Retainer" class="btn btn-outline" style="text-align:center;">Request Retainer</a>
+          </div>
+
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <footer>
+    <div class="container">
+      <p>qnx-top is open-source (MIT License) and pre-release. Independent technical advisory specializing in BlackBerry QNX technologies.</p>
+      <p style="margin-top:8px;font-size:12px;opacity:0.6;">QNX and Neutrino are registered trademarks of BlackBerry Limited.</p>
+    </div>
+  </footer>
+
+</body>
+</html>

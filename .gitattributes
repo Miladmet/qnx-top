@@ -1,0 +1,23 @@
+# Auto-detect text files and perform LF normalization
+* text=auto
+
+# C source code, CMake, shell scripts, Python, HTML, Markdown
+*.c text eol=lf
+*.h text eol=lf
+*.cmake text eol=lf
+CMakeLists.txt text eol=lf
+*.sh text eol=lf
+*.md text eol=lf
+*.html text eol=lf
+*.py text eol=lf
+*.yml text eol=lf
+
+# Windows batch files
+*.bat text eol=crlf
+
+# Binary files
+*.png binary
+*.jpg binary
+*.ico binary
+*.mp4 binary
+*.wav binary
