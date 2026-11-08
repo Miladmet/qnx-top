@@ -1,0 +1,29 @@
+name: qnx-top CI Test & Build
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  build-and-test:
+    runs-on: ubuntu-latest
+
+    steps:
+    - name: Checkout Repository
+      uses: actions/checkout@v4
+
+    - name: Set up CMake and Compilers
+      run: |
+        sudo apt-get update
+        sudo apt-get install -y cmake build-essential
+
+    - name: Configure CMake
+      run: cmake -B build -DCMAKE_BUILD_TYPE=Release -DBUILD_TESTING=ON
+
+    - name: Build C Library and Executables
+      run: cmake --build build --config Release -j$(nproc)
+
+    - name: Run Unit Tests
+      run: ctest --test-dir build --output-on-failure

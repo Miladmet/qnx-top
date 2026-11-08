@@ -3,12 +3,19 @@ build/
 bin/
 *.o
 *.obj
+*.a
+*.so
+*.exe
+
+# Large Media Files (Generated locally via build_demo_video.py)
+*.mp4
+*.wav
 
 # Python
 __pycache__/
 *.pyc
 
-# IDEs
+# IDEs & Editors
 .vscode/
 .idea/
 

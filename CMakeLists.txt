@@ -1,35 +1,60 @@
 cmake_minimum_required(VERSION 3.20)
 project(qnx-top VERSION 1.0.0 LANGUAGES C)
 
+include(GNUInstallDirs)
+include(CTest)
+
 set(CMAKE_C_STANDARD 11)
 set(CMAKE_C_STANDARD_REQUIRED ON)
 
+# Compiler Warnings
+if(MSVC)
+    add_compile_options(/W4)
+else()
+    add_compile_options(-Wall -Wextra -Wpedantic)
+endif()
+
 include_directories(include)
 
-# Check if compiling under QNX SDP
-if(CMAKE_SYSTEM_NAME STREQUAL "QNX" OR DEFINED ENV{QNX_TARGET})
+# Detect QNX Target Environment
+if(CMAKE_SYSTEM_NAME MATCHES "QNX" OR DEFINED ENV{QNX_TARGET})
     message(STATUS "[qnx-top] Configuring build for BlackBerry QNX Neutrino 8.0 Target")
-    add_compile_definitions(__QNX__)
-    # Link against QNX microkernel libraries
     set(QNX_LIBS socket)
 else()
-    message(STATUS "[qnx-top] Configuring build in Host Compatibility Mode")
+    message(STATUS "[qnx-top] Configuring build in Host Compatibility Mode (${CMAKE_SYSTEM_NAME})")
     set(QNX_LIBS "")
 endif()
 
-# Source files
-set(SOURCES
-    src/main.c
+# Core library
+set(LIB_SOURCES
     src/qnx_collector.c
     src/qnx_resmgr.c
 )
 
-add_executable(qnx-top ${SOURCES})
-target_include_directories(qnx-top PRIVATE include)
+add_library(qnx_top_core STATIC ${LIB_SOURCES})
+target_include_directories(qnx_top_core PUBLIC include)
 
 if(QNX_LIBS)
-    target_link_libraries(qnx-top PRIVATE ${QNX_LIBS})
+    target_link_libraries(qnx_top_core PUBLIC ${QNX_LIBS})
 endif()
 
-# Installation target
-install(TARGETS qnx-top DESTINATION /usr/bin)
+if(UNIX AND NOT APPLE)
+    target_link_libraries(qnx_top_core PUBLIC pthread)
+endif()
+
+# Main executable
+add_executable(qnx-top src/main.c)
+target_link_libraries(qnx-top PRIVATE qnx_top_core)
+
+# Standard installation paths
+install(TARGETS qnx-top
+    RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
+)
+
+# Unit Tests
+if(BUILD_TESTING)
+    enable_testing()
+    add_executable(test_qnx_top tests/test_state_mapping.c)
+    target_link_libraries(test_qnx_top PRIVATE qnx_top_core)
+    add_test(NAME StateMappingAndSnapshotTest COMMAND test_qnx_top)
+endif()

@@ -13,12 +13,18 @@
 #include <stdbool.h>
 #include <time.h>
 
+#if defined(__QNX__) || defined(__unix__) || defined(__APPLE__)
+    #include <pthread.h>
+#endif
+
 #ifdef __QNX__
     #include <sys/neutrino.h>
     #include <sys/procfs.h>
     #include <sys/resmgr.h>
     #include <sys/iofunc.h>
     #include <sys/procmgr.h>
+    #include <sys/sched.h>
+    #include <sys/syspage.h>
 #endif
 
 #define QNX_TOP_VERSION "1.0.0"
@@ -59,11 +65,11 @@ typedef enum {
 typedef struct {
     int tid;
     int priority;
-    int policy;              /* SCHED_FIFO, SCHED_RR, SCHED_OTHER */
+    int policy;                 /* SCHED_FIFO, SCHED_RR, SCHED_OTHER */
     qnx_thread_state_t state;
-    uint64_t cpu_time_ns;
-    uint32_t blocked_on_chid;
-    uint64_t reply_stall_ns; /* Microsecond latency if in REPLY-blocked state */
+    uint64_t cpu_time_ns;       /* Total execution time in ns */
+    uint32_t blocked_on_chid;   /* Channel ID if blocked */
+    float reply_stall_ms;       /* Observed stall duration in milliseconds */
 } qnx_thread_info_t;
 
 /**
@@ -75,7 +81,8 @@ typedef struct {
     char name[MAX_NAME_LEN];
     uint64_t memory_rss_bytes;
     uint64_t memory_vsize_bytes;
-    float cpu_percent;
+    float cpu_percent;          /* Computed delta CPU utilization */
+    uint64_t prev_cpu_time_ns;  /* Used for delta calculation */
     int num_threads;
     qnx_thread_info_t threads[MAX_THREADS_PER_PROC];
     int active_chid;
@@ -126,6 +133,8 @@ typedef struct {
  * Complete System Snapshot
  */
 typedef struct {
+    bool is_native_qnx;         /* True if running on genuine QNX kernel */
+    uint64_t timestamp_ns;
     uint32_t num_cores;
     float core_utilization[16];
     uint64_t core_ctxsw_per_sec[16];
@@ -133,6 +142,7 @@ typedef struct {
     uint64_t ram_used_mb;
     uint64_t resmgr_pool_kb;
     uint64_t shm_pool_kb;
+    uint64_t total_channel_msgs_sec;
     
     int num_processes;
     qnx_process_info_t processes[MAX_PROCESSES];
@@ -152,6 +162,7 @@ int qnx_top_init(void);
 int qnx_top_collect_snapshot(qnx_system_snapshot_t *snapshot);
 const char* qnx_thread_state_to_string(qnx_thread_state_t state);
 int qnx_top_start_resmgr(void);
+void qnx_top_stop_resmgr(void);
 void qnx_top_cleanup(void);
 
 #endif /* QNX_TOP_H */
