@@ -50,12 +50,12 @@ PID    TID  PRI   STATE             CPU%     RSS      CHID   PULSES     COMMAND
 ------------------------------------------------------------------------------------------
 1      1    255   RUNNING           0.8%     1.1M     0x01   N/A        /proc/boot/procnto-smp-instr
 124    1    21    RECEIVE           2.4%     8.0M     0x03   N/A        /sbin/devc-ser8250
-312    1    18    REPLY-blocked     1.2%     6.0M     -      N/A        /sbin/devb-eide [waiting on PID 124 CHID 0x03: 12.0ms (kernel)]
+312    1    18    REPLY-blocked     1.2%     6.0M     -      N/A        /sbin/devb-eide [waiting on PID 124 CHID 0x03: 12.4ms (kernel)]
 
 [Server Channels With REPLY-Blocked Clients]
 CHID     SERVER PID SERVER                 RECEIVE THREAD   BLOCKED CLIENTS MSG/SEC    STATUS
 ------------------------------------------------------------------------------------------
-0x03     124        /sbin/devc-ser8250     TID 1 (PRI 21)   1              N/A        STALL 12.0ms (kernel)
+0x03     124        /sbin/devc-ser8250     TID 1 (PRI 21)   1              N/A        STALL 12.4ms (kernel)
 
 [Adaptive Partitioning System (APS)]
 Adaptive Partitioning: Inactive / Not Configured
@@ -71,7 +71,7 @@ The numbers above are an example of the layout, not a recording. Run with `-b` f
 ```
 PID 312  /sbin/devb-eide  (PPID 1)  VSIZE 12.0M  RSS 6.0M  CPU 1.2%  threads 1
   TID  PRI  POLICY    STATE          CPU%     CPU# BLOCKED ON
-  1    18   FIFO      REPLY-blocked  1.2%     0    server PID 124 CHID 0x03, waiting 12.0ms (kernel)
+  1    18   FIFO      REPLY-blocked  1.2%     0    server PID 124 CHID 0x03, waiting 12.4ms (kernel)
 ```
 
 Thread CPU% values are shares of total machine capacity, so they add up to the process CPU%.
