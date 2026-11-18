@@ -3,8 +3,8 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>qnx-top | Microkernel Observability & QNX 8.0 Consulting</title>
-  <meta name="description" content="Real-time terminal observability and IPC profiler for BlackBerry QNX 8.0 Neutrino, plus specialized real-time systems consulting.">
+  <title>qnx-top | Real-Time Microkernel Observability for BlackBerry QNX 8.0</title>
+  <meta name="description" content="Real-time terminal observability and IPC profiler for BlackBerry QNX 8.0 Neutrino. Inspect REPLY-blocked threads, channels, and resource managers.">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Fira+Code:wght@400;600&family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
@@ -180,9 +180,9 @@
       <div class="logo"><span>⚡</span> qnx-top</div>
       <div class="nav-links">
         <a href="#features">Features</a>
-        <a href="#consulting">Consulting Services</a>
+        <a href="#architecture">Architecture</a>
+        <a href="#quickstart">Quickstart</a>
         <a href="https://github.com/Miladmet/qnx-top" class="btn btn-outline" target="_blank">GitHub Repo</a>
-        <a href="#consulting" class="btn btn-primary">Book Consultation</a>
       </div>
     </div>
   </header>
@@ -192,10 +192,10 @@
       <div class="container">
         <div class="badge">Built for BlackBerry QNX Neutrino 8.0 (Everywhere)</div>
         <h1>Real-Time Microkernel Observability<br><span>For Mission-Critical Systems</span></h1>
-        <p>An open-source diagnostic tool that shows which QNX threads are REPLY-blocked, on which server channel, and for how long. Pre-release: the native QNX collector has not yet been validated on a target.</p>
+        <p>An open-source diagnostic profiler and Resource Manager that detects which QNX threads are REPLY-blocked, on which server channel, and for how long. Designed for safety-critical real-time environments.</p>
         <div>
-          <a href="#consulting" class="btn btn-primary" style="padding: 14px 28px; font-size: 16px;">Hire a QNX 8.0 Systems Specialist</a>
-          <a href="https://github.com/Miladmet/qnx-top" class="btn btn-outline" style="padding: 14px 28px; font-size: 16px; margin-left: 12px;">View Open Source Code</a>
+          <a href="#quickstart" class="btn btn-primary" style="padding: 14px 28px; font-size: 16px;">Get Started</a>
+          <a href="https://github.com/Miladmet/qnx-top" class="btn btn-outline" style="padding: 14px 28px; font-size: 16px; margin-left: 12px;" target="_blank">View on GitHub</a>
         </div>
       </div>
     </section>
@@ -249,56 +249,84 @@ RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48.2 MB │ Channel Messages: <sp
       </div>
     </section>
 
-    <!-- Consulting Packages (Strategy 3) -->
-    <section class="pricing" id="consulting">
+    <!-- Architecture & Diagnostics -->
+    <section class="features" id="architecture" style="border-top: 1px solid var(--card-border); padding-top: 60px;">
       <div class="container">
         <div class="section-title">
-          <h2>Specialized QNX 8.0 Consulting Services</h2>
-          <p>Productized, fixed-fee engineering advisory for automotive, robotics, and medical device teams.</p>
+          <h2>Microkernel Deep Diagnostics</h2>
+          <p>Unmasking synchronous IPC bottlenecks that standard monolithic top tools cannot see.</p>
+        </div>
+        <div class="grid-3">
+          <div class="card">
+            <div class="card-icon">⚡</div>
+            <h3>MsgSend & MsgReceive Tracing</h3>
+            <p>Maps client threads in <code>STATE_REPLY</code> directly to the target server process and channel ID (<code>chid</code>). Highlights stalls exceeding the 2.0 ms safety threshold.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">🧩</div>
+            <h3>Native Resource Manager</h3>
+            <p>Registers <code>/dev/qnx_top</code> as a standard POSIX I/O device. Read diagnostic snapshots anytime with <code>cat /dev/qnx_top</code> via a dedicated dispatch thread.</p>
+          </div>
+          <div class="card">
+            <div class="card-icon">🧪</div>
+            <h3>Turnkey Stall Reproducer</h3>
+            <p>Includes <code>qnx-stall-demo</code>, a test utility to inject controlled server latency into real QNX channels and verify observability pipelines under load.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Quickstart / How to Build -->
+    <section class="pricing" id="quickstart">
+      <div class="container">
+        <div class="section-title">
+          <h2>Quickstart & Build Instructions</h2>
+          <p>Built with standard C11 and CMake for QNX Neutrino 8.0 SDP and host compatibility.</p>
         </div>
         <div class="grid-3">
           
           <div class="pricing-card">
-            <h3>Jitter & Latency Audit</h3>
-            <p style="color:var(--text-muted);font-size:14px;">Resolve intermittent timing spikes & stalls.</p>
-            <div class="price">$2,950 <span>/ one-time</span></div>
+            <h3>1. Target Build (QNX SDP 8.0)</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Cross-compile with the official QNX toolchain.</p>
+            <div style="background:var(--bg); padding:14px; border-radius:6px; margin:16px 0; font-family:var(--font-mono); font-size:12px; color:#38bdf8; text-align:left; overflow-x:auto;">
+              source /opt/qnx800/qnxsdp-env.sh<br>
+              cmake -B build -DCMAKE_TOOLCHAIN_FILE=cmake/qnx800-x86_64.toolchain.cmake<br>
+              cmake --build build
+            </div>
             <ul class="price-features">
-              <li>Microkernel IPC & Channel bottleneck audit</li>
-              <li>Priority inversion & scheduling assessment</li>
-              <li>Detailed report with actionable code diffs</li>
-              <li>3–5 business day turnaround</li>
-              <li>Mutual NDA protection</li>
+              <li>Targets QNX Neutrino 8.0 x86_64 & aarch64</li>
+              <li>Native procfs & devctl telemetry</li>
             </ul>
-            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Jitter and Latency Audit" class="btn btn-outline" style="text-align:center;">Book Audit</a>
           </div>
 
           <div class="pricing-card featured">
-            <div class="pricing-tag">Most Popular</div>
-            <h3>Resource Manager Sprint</h3>
-            <p style="color:var(--text-muted);font-size:14px;">Custom /dev driver & hardware integration.</p>
-            <div class="price">$5,800 <span>/ one-time</span></div>
+            <div class="pricing-tag">Testing</div>
+            <h3>2. Host Mode & CI Suites</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Verify algorithms, snapshot invariants & concurrency.</p>
+            <div style="background:var(--bg); padding:14px; border-radius:6px; margin:16px 0; font-family:var(--font-mono); font-size:12px; color:#10b981; text-align:left; overflow-x:auto;">
+              cmake -B build -DBUILD_TESTING=ON<br>
+              cmake --build build<br>
+              ctest --test-dir build --output-on-failure
+            </div>
             <ul class="price-features">
-              <li>Turnkey multi-threaded QNX 8.0 ResMgr skeleton</li>
-              <li>POSIX _IO_READ, _IO_WRITE, _IO_DEVCTL handlers</li>
-              <li>procmgr_ability() security sandboxing</li>
-              <li>QEMU regression test suite</li>
-              <li>Full IP ownership transferred to you</li>
+              <li>Comprehensive state mapping unit tests</li>
+              <li>LLVM ThreadSanitizer verified</li>
             </ul>
-            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Resource Manager Sprint" class="btn btn-primary" style="text-align:center;">Start Sprint</a>
           </div>
 
           <div class="pricing-card">
-            <h3>Systems Architect Retainer</h3>
-            <p style="color:var(--text-muted);font-size:14px;">Senior QNX advisory on demand.</p>
-            <div class="price">$4,500 <span>/ month</span></div>
+            <h3>3. Run & Observe Stalls</h3>
+            <p style="color:var(--text-muted);font-size:14px;">Launch profiler with live thread inspection.</p>
+            <div style="background:var(--bg); padding:14px; border-radius:6px; margin:16px 0; font-family:var(--font-mono); font-size:12px; color:#f59e0b; text-align:left; overflow-x:auto;">
+              # Terminal 1: Inject simulated IPC latency<br>
+              ./qnx-stall-demo -d 50<br><br>
+              # Terminal 2: Inspect blocked threads<br>
+              ./qnx-top -t
+            </div>
             <ul class="price-features">
-              <li>15–20 dedicated advisory hours / month</li>
-              <li>Weekly architecture & PR review calls</li>
-              <li>Direct Slack / Teams access</li>
-              <li>Priority response (< 24h) for blocker bugs</li>
-              <li>Ongoing QNX Everywhere & QEMU support</li>
+              <li>Thread view with server channel attribution</li>
+              <li>Instant <code>cat /dev/qnx_top</code> snapshot</li>
             </ul>
-            <a href="mailto:consulting@qnx-top.dev?subject=Inquiry: Systems Architect Retainer" class="btn btn-outline" style="text-align:center;">Request Retainer</a>
           </div>
 
         </div>
@@ -308,8 +336,8 @@ RAM: 812 MB / 4096 MB (19.8%) │ ResMgr Pool: 48.2 MB │ Channel Messages: <sp
 
   <footer>
     <div class="container">
-      <p>qnx-top is open-source (MIT License) and pre-release. Independent technical advisory specializing in BlackBerry QNX technologies.</p>
-      <p style="margin-top:8px;font-size:12px;opacity:0.6;">QNX and Neutrino are registered trademarks of BlackBerry Limited.</p>
+      <p>qnx-top is open-source software licensed under the MIT License. Developed for the BlackBerry QNX Global Hackathon.</p>
+      <p style="margin-top:8px;font-size:12px;opacity:0.6;">QNX, Neutrino, and Momentics are trademarks or registered trademarks of BlackBerry Limited.</p>
     </div>
   </footer>
 

@@ -85,8 +85,14 @@ endif()
 add_executable(qnx-top src/main.c)
 target_link_libraries(qnx-top PRIVATE qnx_top_core)
 
+# Demo / Diagnostic Stall Generator
+add_executable(qnx-stall-demo examples/qnx_stall_demo.c)
+if(UNIX AND NOT APPLE AND NOT _qnx_target)
+    target_link_libraries(qnx-stall-demo PRIVATE Threads::Threads)
+endif()
+
 # Standard installation paths
-install(TARGETS qnx-top
+install(TARGETS qnx-top qnx-stall-demo
     RUNTIME DESTINATION ${CMAKE_INSTALL_BINDIR}
 )
 

@@ -4,7 +4,7 @@
 [![Target: QNX 8.0](https://img.shields.io/badge/Target-QNX%20Neutrino%208.0-red.svg)](https://qnx.software/en/developers/get-started/qnx-everywhere)
 [![Hackathon Category](https://img.shields.io/badge/Category-Developer%20Tooling%20%26%20Host%20Tools-orange.svg)](#)
 [![CI Build](https://github.com/Miladmet/qnx-top/actions/workflows/ci.yml/badge.svg)](https://github.com/Miladmet/qnx-top/actions)
-[![Commercial Consulting](https://img.shields.io/badge/Services-QNX%208.0%20Consulting-success.svg)](docs/commercial/CONSULTING.md)
+[![C11 POSIX](https://img.shields.io/badge/Standard-C11%20%2F%20POSIX-green.svg)](#)
 
 **`qnx-top`** is a terminal diagnostic tool for **BlackBerry QNX Neutrino 8.0 (QNX Everywhere)**.
 
@@ -139,14 +139,19 @@ qnx-top -t         # thread view: one row per thread
 qnx-top -p 312     # only PID 312, with its threads
 ```
 
-### 4. Terminal mock-up (Python)
-`demo_qnx_top.py` is an **animated mock-up with synthetic data**, used for the demo video. It does not read from any system.
+### 4. Reproducing IPC Bottlenecks (`qnx-stall-demo`)
+
+The companion tool `qnx-stall-demo` creates a real QNX microkernel message-passing bottleneck between a client thread (`MsgSend`) and a server thread (`MsgReceive` / `MsgReply`). While the server delays its reply, the client thread enters the `STATE_REPLY` (`REPLY-blocked`) state.
+
 ```bash
-python demo_qnx_top.py
+# Run stall generator with a 50 ms artificial reply latency (threshold: >2.0 ms)
+./qnx-stall-demo -d 50
+
+# In another terminal, observe qnx-top flagging the blocked thread and channel:
+./qnx-top -t
 ```
 
 ---
-
 
 ## 📁 Repository Structure
 
@@ -155,30 +160,15 @@ qnx-top/
 ├── CMakeLists.txt                 # Multi-platform CMake build configuration
 ├── LICENSE                        # MIT Open Source License
 ├── README.md                      # Technical documentation & usage
-├── demo_qnx_top.py                # Animated mock-up with synthetic data (not a monitor)
 ├── index.html                     # Web landing page
 ├── cmake/                         # QNX 8.0 toolchain files (x86_64 and aarch64)
+├── examples/
+│   └── qnx_stall_demo.c          # Real microkernel IPC stall generator
 ├── include/                       # Public C headers (qnx_top.h)
 ├── src/                           # Native C implementation (collector, resmgr, main)
 ├── tests/                         # Unit tests (states, snapshot, stall tracker, concurrency)
-├── scripts/                       # Turnkey QEMU launch and build scripts
-└── docs/
-    └── commercial/                # Services catalog & consulting documentation
+└── scripts/                       # Turnkey QEMU launch and build scripts
 ```
-
----
-
-## 💼 Commercial Support & Specialized Consulting
-
-Building a mission-critical Software-Defined Vehicle (SDV), medical robot, or aerospace control system on QNX 8.0?
-
-We offer fixed-scope engineering packages and advisory retainers:
-* **Real-Time Jitter & Microkernel Latency Audits** (Identifying and resolving deadline spikes and IPC stalls)
-* **Custom QNX 8.0 Resource Manager Architecture** (Turnkey `/dev` drivers with POSIX I/O handlers)
-* **Fractional QNX Systems Architect Retainer**
-
-👉 **[View Full Consulting Packages & Rates in docs/commercial/CONSULTING.md](docs/commercial/CONSULTING.md)**  
-👉 **Inquiries:** `consulting@qnx-top.dev`
 
 ---
 
